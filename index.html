@@ -7363,7 +7363,9 @@
     document.getElementById('antragUnterschrift').innerHTML = a.unterschrift_bild
       ? `<img class="pe-sig" src="${a.unterschrift_bild}" alt="Unterschrift">
          <div style="font-size:12.5px; color:var(--ink-soft); margin-top:6px;">${a.unterschrift_ort ? escapeHtml(a.unterschrift_ort) + ', ' : ''}${new Date(a.eingegangen_am).toLocaleDateString('de-DE')} · digital unterschrieben</div>`
-      : '<span class="pe-nein">– (gelöscht)</span>';
+      : (a.zahlungsweise === 'lastschrift'
+          ? '<span class="pe-nein">– (gelöscht)</span>'
+          : '<span style="color:var(--ink-soft);">nicht erforderlich (Überweisung)</span>');
 
     const notiz = document.getElementById('antragNotiz');
     notiz.value = a.notiz_vorstand || '';
