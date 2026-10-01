@@ -1097,7 +1097,7 @@
       <div id="satzungListe"></div>
 
       <div class="satzung-hinweis">
-        Angezeigt wird der wörtliche Satzungstext, Stand 17.09.2026. Bei Zweifelsfragen
+        Angezeigt wird der wörtliche Satzungstext in der Fassung vom 30.09.2026 (Gründungsversammlung). Bei Zweifelsfragen
         gilt immer die beim Registergericht hinterlegte Fassung.
       </div>
     </div>
@@ -3664,13 +3664,22 @@
     if (e.target === haushaltDetailModal) haushaltDetailModal.classList.add('hidden');
   });
 
+  // Muss zur Datenbank-Funktion rolle_darf_kinder_sehen() passen
+  const KINDER_ROLLEN = ['admin', 'vorsitzender', 'kassenwart'];
+
   async function loadKitaKinder(haushaltId) {
+    const kindList = document.getElementById('kitaKindList');
+    const darfKinder = KINDER_ROLLEN.includes(currentRolle);
+    kitaKindForm.classList.toggle('hidden', !darfKinder);
+    if (!darfKinder) {
+      kindList.innerHTML = '<li style="color:#93a3b1;">Kinderdaten sieht nur der geschäftsführende Vorstand.</li>';
+      return;
+    }
     const { data: kinder, error } = await supabaseClient
       .from('kita_kinder').select('*')
       .eq('haushalt_id', haushaltId)
       .order('vorname');
 
-    const kindList = document.getElementById('kitaKindList');
     kindList.innerHTML = '';
     if (error) {
       kindList.innerHTML = `<li style="color:#b8452f;">Fehler beim Laden: ${escapeHtml(error.message)}</li>`;
@@ -6800,19 +6809,22 @@
   const SATZUNG = [
   {
     "titel": "§1 Name, Sitz und Geschäftsjahr",
-    "inhalt": "Der Verein führt den Namen:\n„Förderverein der Evangelischen Kindertagesstätte Himmelsleiter e.V.“.\n\nDer Verein ist im Vereinsregister eingetragen.\n\nDer Sitz des Vereins ist die Kindertagesstätte\nin 14974 Ludwigsfelde, Hirschweg 17.\n\nDas Geschäftsjahr ist das Kalenderjahr.",
+    "inhalt": "1.1 Der Verein führt den Namen „Förderverein der Evangelischen Kindertagesstätte Himmelsleiter“. Er soll in das Vereinsregister eingetragen werden und führt nach der Eintragung den Zusatz „e.V.“.\n\n1.2 Der Verein hat seinen Sitz in Ludwigsfelde.\n\n1.3 Das Geschäftsjahr ist das Kitajahr (01.08. – 31.07.). Das erste Geschäftsjahr ist ein Rumpfgeschäftsjahr und endet am 31.07.2027.",
     "woerter": [
       "name",
       "verein",
       "sitz",
       "geschäftsjahr",
-      "adresse",
+      "kitajahr",
+      "rumpfgeschäftsjahr",
+      "vereinsregister",
+      "eintragung",
       "ludwigsfelde"
     ]
   },
   {
     "titel": "§2 Zweck des Vereins",
-    "inhalt": "Der Verein verfolgt ausschließlich und unmittelbar\ngemeinnützige Zwecke im Sinne des Abschnitts\n„Steuerbegünstigte Zwecke“ der Abgabenordnung.\n\nZweck ist die Förderung der Bildung und Erziehung\ndurch die Unterstützung der Arbeit in der\nEvangelischen Kindertagesstätte Himmelsleiter.\n\nDazu gehören insbesondere:\n\n- Durchführung, Unterstützung und Mitgestaltung\n  von Kita- und öffentlichen Veranstaltungen\n\n- Förderung musischer, sportlicher,\n  naturwissenschaftlicher und sprachlicher\n  sowie kultureller und kreativer Angebote\n\n- Beschaffung von zusätzlichem Spiel-,\n  Lern- und Anschauungsmaterial\n\n- Erweiterung und Instandhaltung der\n  Inneneinrichtung und Außenanlage\n\n- Unterstützung bei der Gewinnung von Sponsoren\n\n- Durchführung von Spendenaktionen und Sammlungen\n  zugunsten der Kita\n\nDer Verein ist selbstlos tätig und verfolgt\nnicht in erster Linie eigenwirtschaftliche Zwecke.\n\nMittel des Vereins dürfen nur für\nsatzungsmäßige Zwecke verwendet werden.\n\nDie Mitglieder erhalten keine Zuwendungen\naus den Mitteln des Vereins.\n\nEs dürfen keine Personen durch zweckfremde\nAusgaben oder unverhältnismäßig hohe\nZuwendungen begünstigt werden.\n\nAlle Inhaber von Vereinsämtern sind\nehrenamtlich tätig.\n\nSatzungsänderungen mit möglichen Auswirkungen\nauf die Gemeinnützigkeit sind vor ihrer\nAnmeldung beim Registergericht dem zuständigen\nFinanzamt vorzulegen.",
+    "inhalt": "2.1 Der Verein verfolgt ausschließlich und unmittelbar gemeinnützige Zwecke im Sinne des Abschnitts „Steuerbegünstigte Zwecke“ der Abgabenordnung.\n\n2.2 Zweck des Vereins ist die Förderung von Bildung und Erziehung. Der Satzungszweck wird insbesondere verwirklicht durch die ideelle und finanzielle Unterstützung der Arbeit in der Evangelischen Kindertagesstätte Himmelsleiter in Ludwigsfelde, zum Beispiel durch folgende Maßnahmen:\na) Durchführung, Unterstützung und Mitgestaltung von Kita- und öffentlichen Veranstaltungen\nb) Förderung musischer, sportlicher, naturwissenschaftlicher und sprachlicher sowie kultureller und kreativer Angebote\nc) Beschaffung von zusätzlichem Spiel-, Lern- und Anschauungsmaterial\nd) Erweiterung der Inneneinrichtung und der Außenanlage\ne) Unterstützung bei der Gewinnung von Sponsoren sowie Durchführung von Spendenaktionen und Sammlungen zugunsten der Kita\n\n2.3 Der Verein verwirklicht seinen Zweck ausschließlich zugunsten der Evangelischen Kindertagesstätte Himmelsleiter, und zwar selbst oder durch die Beschaffung und Weitergabe von Mitteln im Sinne des § 58 Nr. 1 der Abgabenordnung. Da die Kindertagesstätte keine eigene Rechtsperson ist, werden Geld- und Sachzuwendungen an ihren Träger, das Evangelische Diakonissenhaus Berlin Teltow Lehnin, mit der Auflage weitergegeben, sie ausschließlich für die Evangelische Kindertagesstätte Himmelsleiter zu verwenden.\n\n2.4 Der Verein ist selbstlos tätig. Er verfolgt nicht in erster Linie eigenwirtschaftliche Zwecke.\n\n2.5 Mittel des Vereins dürfen nur für satzungsmäßige Zwecke verwendet werden. Die Mitglieder erhalten keine Zuwendungen aus den Mitteln des Vereins.\n\n2.6 Es dürfen keine Personen durch Ausgaben, die den Zwecken des Vereins fremd sind oder durch unverhältnismäßig hohe Zuwendungen begünstigt werden.\n\n2.7 Alle Inhaber von Vereinsämtern sind ehrenamtlich tätig.\n\n2.8 Jede Satzungsänderung mit möglichen Auswirkungen auf die Gemeinnützigkeit ist vor ihrer Anmeldung beim Registergericht dem zuständigen Finanzamt vorzulegen.",
     "woerter": [
       "zweck",
       "vereinszweck",
@@ -6825,29 +6837,35 @@
       "bildung",
       "erziehung",
       "ehrenamt",
-      "mittel"
+      "ehrenamtlich",
+      "mittel",
+      "kita",
+      "träger",
+      "mittelbeschaffung",
+      "finanzamt"
     ]
   },
   {
     "titel": "§3 Mitgliedschaft",
-    "inhalt": "Mitglied kann jede natürliche und juristische\nPerson werden, die die Bestrebungen des Vereins\nunterstützen will und die Satzung anerkennt.\n\nDie Mitgliedschaft wird durch schriftliche\nBeitrittserklärung an den Vereinsvorstand\nerworben, wenn sich der Anmeldende zur\nEinhaltung der Satzung verpflichtet und\nder Vorstand der Aufnahme zustimmt.\n\nDie Höhe des Beitrages wird von der\nMitgliederversammlung bestimmt.\n\nDie Mitgliedschaft endet:\n\n- durch Austritt\n- durch Tod\n- durch Ausschluss\n- durch Zahlungsverzug von mehr als einem Monat\n  nach Mahnung\n\nDer Austritt kann zum Ende des Kalenderjahres\nerfolgen und muss dem Vorstand schriftlich\nmit einer Frist von vier Wochen zum\nAustrittstermin erklärt werden.\n\nBeitragsanteile werden nicht zurückerstattet.\n\nDie Mitgliederversammlung kann mit einfacher\nMehrheit der anwesenden Mitglieder über einen\nAusschluss beschließen.\n\nEin Ausschluss kann bei grobem oder wiederholtem\nVerstoß gegen die Satzung oder die Interessen\ndes Vereins erfolgen.\n\nDem betroffenen Mitglied ist mindestens drei\nWochen vor dem beabsichtigten Ausschluss\nGelegenheit zur Stellungnahme zu geben.\n\nGegen den Ausschließungsbeschluss kann innerhalb\neines Monats ab Zugang schriftlich beim Vorstand\nBerufung eingelegt werden.\n\nDie Mitgliederversammlung, die über die Berufung\nentscheidet, ist innerhalb von zwei Monaten nach\nEingang der Berufungsschrift einzuberufen.\n\nDie Beendigung der Mitgliedschaft ist dem\nMitglied schriftlich mitzuteilen.\n\nBei Beendigung ist zeitweise überlassenes\nVereinseigentum zurückzugeben.\n\nEs besteht kein Anspruch auf Vereinsvermögen\noder Rückerstattung gezahlter Mitgliedsbeiträge.",
+    "inhalt": "3.1 Mitglied kann jede natürliche und juristische Person werden, die die Bestrebungen des Vereins unterstützen will und die Satzung anerkennt.\n\n3.2 Die Mitgliedschaft wird durch schriftliche Beitrittserklärung an den Vereinsvorstand erworben, wenn sich der Anmeldende zur Einhaltung der Satzung verpflichtet und der Vorstand der Aufnahme zustimmt. Die Höhe des Beitrages wird von der Mitgliederversammlung bestimmt.\n\n3.3 Die Mitgliedschaft endet:\na) durch Austritt des Mitglieds\nb) durch Tod\nc) durch Ausschluss\nd) durch Austritt des Kindes aus der Kita (Schule, Umzug) zum Ende des Kitajahres\n\n3.4 Der Austritt kann zum Ende des Kitajahres erfolgen und muss dem Vorstand formlos per Mail, mit einer Frist von vier Wochen zum Austrittstermin erklärt werden. Es werden keine Beitragsanteile zurückerstattet.\n\n3.5 Über den Ausschluss eines Mitglieds entscheidet der geschäftsführende Vorstand. Ein Ausschluss kann bei grobem oder wiederholtem Verstoß gegen die Satzung oder die Interessen des Vereins erfolgen. Dem Mitglied ist mindestens drei Wochen vor der Entscheidung Gelegenheit zur Stellungnahme zu geben.\na) Der Beschluss über den Ausschluss ist unter Nennung der Gründe dem Mitglied schriftlich bekanntzugeben.\nb) Gegen den Ausschließungsbeschluss steht dem Mitglied das Recht der Berufung an die Mitgliederversammlung zu. Die Berufung muss innerhalb einer Frist von einem Monat ab Zugang des Ausschließungsbeschlusses beim Vorstand schriftlich eingereicht werden.\nc) Die Mitgliederversammlung, die über die Berufung entscheidet, ist innerhalb von zwei Monaten nach Eingang der Berufungsschrift einzuberufen.\nd) Macht ein Mitglied von der Berufung keinen Gebrauch oder versäumt es die Berufungsfrist, so unterwirft es sich damit dem Ausschließungsbeschluss mit der Folge, dass die Mitgliedschaft als beendet gilt und eine gerichtliche Anfechtung nicht mehr möglich ist.\n\n3.6 Die Beendigung der Mitgliedschaft ist dem Mitglied schriftlich mitzuteilen. Bei Beendigung der Mitgliedschaft ist zeitweise überlassenes Vereinseigentum zurückzugeben. Es besteht kein Anspruch an das Vereinsvermögen oder auf Rückerstattung gezahlter Mitgliedsbeiträge.",
     "woerter": [
       "mitglied",
       "mitgliedschaft",
       "beitritt",
       "aufnahme",
+      "beitrittserklärung",
       "austritt",
       "kündigung",
       "ausschluss",
       "berufung",
       "beitrag",
-      "mahnung",
-      "zahlungsverzug"
+      "schule",
+      "umzug"
     ]
   },
   {
     "titel": "§4 Rechte und Pflichten der Mitglieder",
-    "inhalt": "Mitglieder haben das Recht, an den\nMitgliederversammlungen teilzunehmen,\nAnträge zu stellen und das Stimmrecht\nauszuüben.\n\nJedes stimmberechtigte Mitglied hat eine Stimme.\n\nDie Stimme kann nur persönlich abgegeben werden.\n\nMitglieder müssen die von der\nMitgliederversammlung festgesetzten\nBeiträge entrichten.\n\nIn Ausnahmefällen kann der Vorstand auf Antrag\nden Beitrag ermäßigen oder erlassen, wenn das\nMitglied den Verein durch gemeinnützige Arbeit\nfördert.",
+    "inhalt": "4.1 Die Mitglieder haben das Recht, an den Mitgliederversammlungen des Vereins teilzunehmen, Anträge zu stellen und das Stimmrecht auszuüben. Jedes stimmberechtigte Mitglied hat eine Stimme, die nur persönlich abgegeben werden kann.\n\n4.2 Die Mitglieder haben die in der Mitgliederversammlung festgesetzten Beiträge zu entrichten.\n\n4.3 In Ausnahmefällen kann der Vorstand auf Antrag den Beitrag ermäßigen oder erlassen, wenn das Mitglied den Verein durch gemeinnützige Arbeit fördert.",
     "woerter": [
       "rechte",
       "pflichten",
@@ -6861,8 +6879,8 @@
     ]
   },
   {
-    "titel": "§5 Beschaffung der Mittel",
-    "inhalt": "Die erforderlichen Mittel können aufgebracht\nwerden durch:\n\n- Beiträge\n- Spenden\n- sonstige Einnahmen\n\nDer Jahresbeitrag für das Kalenderjahr ist\nerstmalig mit dem Beitritt fällig.\n\nDanach ist der Jahresbeitrag jeweils mit Beginn\ndes Kalenderjahres innerhalb von vier Wochen\nfällig.",
+    "titel": "§5 Beschaffung der Mittel zur Verwirklichung der Vereinszwecke",
+    "inhalt": "5.1 Die erforderlichen Mittel können aufgebracht werden durch:\na) Beiträge\nb) Spenden\nc) sonstige Einnahmen\n\n5.2 Der Jahresbeitrag für das Kitajahr ist erstmalig mit dem Beitritt fällig, danach jeweils mit Beginn des Kitajahres innerhalb von 4 Wochen.",
     "woerter": [
       "mittel",
       "beiträge",
@@ -6875,8 +6893,8 @@
     ]
   },
   {
-    "titel": "§6 Organe des Vereins und Vorstand",
-    "inhalt": "Organe des Vereins sind:\n\n- der geschäftsführende Vorstand\n- der erweiterte Vorstand\n- die Mitgliederversammlung\n\nDie Organe können sich eine Geschäftsordnung geben.\n\nDer geschäftsführende Vorstand besteht aus:\n\n- dem Vorsitzenden\n- dem stellvertretenden Vorsitzenden\n- dem Schatzmeister\n\nDer geschäftsführende Vorstand leitet die\nVereinsarbeit und trägt die Verantwortung\nfür die Erfüllung der Aufgaben aus Satzung\nund Beschlüssen der Mitgliederversammlung.\n\nDer Verein wird gerichtlich und außergerichtlich\ndurch zwei Vorstandsmitglieder vertreten.\n\nZur Abgabe rechtsverbindlicher Erklärungen und\nUnterschriften ist jeweils unabhängig voneinander\nder Vorsitzende berechtigt, sein Stellvertreter\nund der Schatzmeister.\n\nDer Schatzmeister verwaltet die Vereinskasse\nund führt Buch über Einnahmen und Ausgaben.\n\nEr leistet Zahlungen für den Verein auf\nAnweisung des Vorstandes.\n\nZweckgebundene Einnahmen werden separat verwaltet.\n\nDer Schatzmeister trägt dafür Sorge, dass\nzweckgebundene Einnahmen nur entsprechend\nihrem Zweck verwendet werden.\n\nDieser Zweck muss mit dem Vereinszweck\nnach §2 vereinbar sein.\n\nDer Vorstand wird von der Mitgliederversammlung\nfür zwei Jahre gewählt.\n\nEr bleibt im Amt, bis die Mitgliederversammlung\neinen neuen Vorstand gewählt hat.\n\nWiederwahl ist möglich.\n\nVorstandsmitglieder können von der\nMitgliederversammlung mit einer\nZweidrittelmehrheit abgewählt werden.\n\nDer erweiterte Vorstand besteht aus dem\ngeschäftsführenden Vorstand und bis zu\nsieben Beisitzern.\n\nDer erweiterte Vorstand beschließt über\ndie Vergabe der Mittel.\n\nDer Vorstand wird durch den 1. Vorsitzenden\neinberufen.\n\nDer Vorsitzende muss den Vorstand einberufen,\nwenn mindestens zwei Vorstandsmitglieder\ndies verlangen.\n\nZwischen dem Zugang der Ladung und dem\nSitzungstermin muss mindestens eine Woche liegen.\n\nVorstandssitzungen finden regelmäßig,\nmindestens jedoch einmal im Quartal statt.\n\nDer Vorstand ist beschlussfähig, wenn mindestens\nzwei Vorstandsmitglieder anwesend sind.\n\nÜber jede Vorstandssitzung ist ein Protokoll\nanzufertigen.\n\nDas Protokoll ist von den anwesenden\nVorstandsmitgliedern zu unterzeichnen\nund aufzubewahren.",
+    "titel": "§6 Organe des Vereins",
+    "inhalt": "6.1 Die Organe sind:\na) der geschäftsführende Vorstand\nb) der erweiterte Vorstand\nc) die Mitgliederversammlung.\n\nDie Organe des Vereins können sich eine Geschäftsordnung geben.\n\n6.2 Der geschäftsführende Vorstand besteht aus:\na) dem Vorsitzenden\nb) dem stellvertretenden Vorsitzenden\nc) zwei Schatzmeistern.\n\n6.2.1 Er leitet die Vereinsarbeit und trägt für die Erfüllung sämtlicher Aufgaben, die sich aus der Satzung und den Beschlüssen der Mitgliederversammlung ergeben, die Verantwortung.\n\n6.2.2 Der geschäftsführende Vorstand ist Vorstand im Sinne des § 26 BGB. Der Verein wird gerichtlich und außergerichtlich durch zwei Mitglieder des geschäftsführenden Vorstands gemeinsam vertreten. Der geschäftsführende Vorstand kann einzelnen seiner Mitglieder für bestimmte Aufgaben, insbesondere den laufenden Zahlungsverkehr, Einzelvollmacht erteilen.\n\n6.2.3 Die Schatzmeister verwalten die Vereinskasse und führen Buch über die Einnahmen und Ausgaben. Sie leisten Zahlungen für den Verein auf Anweisung des Vorstandes. Zweckgebundene Einnahmen werden separat verwaltet. Die Schatzmeister tragen dafür Sorge, dass diese nur ihrem Zweck entsprechend verwendet werden. Dieser Zweck muss aber mit dem Vereinszweck (§ 2) vereinbar sein.\n\n6.2.4 Der Vorstand wird von der Mitgliederversammlung für die Dauer von zwei Jahren gewählt. Er bleibt jedoch solange im Amt, bis die Mitgliederversammlung einen neuen Vorstand gewählt hat. Die Wiederwahl ist möglich. Die Mitglieder des Vorstandes können von der Mitgliederversammlung mit einer 2/3 Mehrheit abgewählt werden.\n\n6.3 Der erweiterte Vorstand besteht aus dem geschäftsführenden Vorstand und bis zu 7 Beisitzern. Er beschließt über die Vergabe der Mittel, dies kann formlos für einen Betrag von bis zu 250€ erfolgen.\n\n6.4 Der Vorstand wird durch den 1. Vorsitzenden einberufen. Er muss ihn einberufen, wenn es mindestens 2 Vorstandsmitglieder verlangen. Zwischen dem Zugang der Ladung und dem Tagungstermin muss mindestens eine Woche liegen. Die Vorstandssitzungen finden regelmäßig, mindestens jedoch einmal im Quartal statt.\n\n6.5 Der Vorstand ist beschlussfähig, wenn mindestens 2 Vorstandsmitglieder anwesend sind.\n\n6.6 Über jede Sitzung ist ein Protokoll zu fertigen, welches von den anwesenden Vorstandsmitgliedern zu unterzeichnen und aufzubewahren ist.",
     "woerter": [
       "vorstand",
       "geschäftsführender vorstand",
@@ -6887,9 +6905,11 @@
       "schatzmeister",
       "beisitzer",
       "organe",
+      "geschäftsordnung",
       "mittelvergabe",
       "mittel",
       "zahlung",
+      "zahlungsverkehr",
       "kasse",
       "einnahmen",
       "ausgaben",
@@ -6899,23 +6919,32 @@
       "protokoll",
       "beschlussfähig",
       "vertretung",
+      "vertreten",
+      "gemeinsam",
+      "vollmacht",
+      "einzelvollmacht",
       "unterschrift",
       "wahl",
-      "amtszeit"
+      "amtszeit",
+      "abwahl"
     ]
   },
   {
     "titel": "§7 Die Mitgliederversammlung",
-    "inhalt": "Die Mitgliederversammlung ist mindestens\neinmal jährlich vom Vorstand einzuberufen.\n\nStimmberechtigt sind die Mitglieder des Vereins.\n\nEine außerordentliche Mitgliederversammlung\nkann der Vorstand einberufen, wenn das\nInteresse des Vereins dies erfordert.\n\nSie ist außerdem einzuberufen, wenn mindestens\n20 Prozent der Mitglieder dies schriftlich\ngegenüber dem Vorstand verlangen.\n\nDie Mitglieder sind unter Bekanntgabe der\nTagesordnung mit einer Frist von mindestens\nzwei Wochen schriftlich einzuladen.\n\nDie ordnungsgemäß einberufene\nMitgliederversammlung ist unabhängig von\nder Zahl der anwesenden Mitglieder\nbeschlussfähig.\n\nAufgaben der Mitgliederversammlung sind\ninsbesondere:\n\n- Wahl des Vorstandes\n- Wahl von zwei Kassenprüfern\n- Entgegennahme des Jahresberichtes\n- Entgegennahme des Prüfungsberichtes\n  der Kassenprüfer\n- Entlastung des Vorstandes\n- Beschlussfassung über die praktische\n  und inhaltliche Vereinsarbeit\n- Satzungsänderungen\n- Auflösung des Vereins\n- Festsetzung der Mitgliedsbeiträge\n\nBeschlüsse werden grundsätzlich mit einfacher\nMehrheit der anwesenden Mitglieder gefasst,\nsofern die Satzung keine andere Mehrheit\nvorschreibt.\n\nStimmenthaltungen werden bei der Berechnung\nder einfachen Mehrheit nicht gezählt.\n\nDie Beschlussfassung erfolgt durch\nHandzeichen und Auszählung.\n\nEine Abstimmung erfolgt geheim, wenn ein\nMitglied dies beantragt.\n\nBei Satzungsänderungen muss auf diesen\nTagesordnungspunkt in der Einladung\nhingewiesen werden.\n\nDer Einladung müssen sowohl der bisherige\nals auch der vorgesehene neue Text\nbeigefügt werden.\n\nÜber die Beschlüsse der Mitgliederversammlung\nist eine Niederschrift anzufertigen.\n\nDiese muss vom Leiter der Sitzung und vom\nProtokollführer unterzeichnet werden.\n\nDie Niederschrift soll insbesondere enthalten:\n\n- Ort und Zeit der Versammlung\n- Versammlungsleiter und Protokollführer\n- Zahl der erschienenen Mitglieder\n- Tagesordnung\n- Art der Abstimmung\n- Abstimmungsergebnisse\n- Satzungsänderungen im genauen Wortlaut",
+    "inhalt": "7.1 Die Mitgliederversammlung ist mindestens einmal jährlich vom Vorstand einzuberufen. Stimmberechtigt sind die Mitglieder des Vereins. Eine außerordentliche Mitgliederversammlung kann der Vorstand einberufen, wenn das Interesse des Vereins dies erfordert oder mindestens 20% der Mitglieder dies schriftlich gegenüber dem Vorstand verlangen.\n\n7.2 Die Mitglieder sind unter Bekanntgabe der Tagesordnung mit einer Frist von mindestens zwei Wochen per Mail und durch einen Aushang in der Kita einzuladen.\n\n7.3 Die ordnungsgemäß einberufene Mitgliederversammlung ist ohne Rücksicht auf die Zahl der anwesenden Mitglieder beschlussfähig.\n\n7.4 Die Aufgaben der Mitgliederversammlung sind insbesondere:\na) Wahl des Vorstandes,\nb) Wahl von zwei Kassenprüfern,\nc) Entgegennahme des Jahresberichtes des Vorstandes,\nd) Entgegennahme des Prüfungsberichtes der Kassenprüfer,\ne) Entlastung des Vorstandes,\nf) Beschlussfassung über die praktische und inhaltliche Arbeit des Vereins\ng) Beschlussfassung über die Satzungsänderungen des Vereins,\nh) Beschlussfassung über die Auflösung des Vereins,\ni) Festsetzung der Höhe der Mitgliedsbeiträge.\n\n7.5 Beschlüsse werden mit einfacher Mehrheit der anwesenden Mitglieder gefasst, sofern nicht andere Bestimmungen der Satzung eine andere Stimmenmehrheit vorschreiben. Stimmenthaltungen werden bei der Berechnung der einfachen Mehrheit nicht gezählt. Satzungsänderungen bedürfen einer Mehrheit von drei Vierteln der abgegebenen Stimmen.\n\n7.6 Die Beschlussfassung erfolgt durch Handzeichen oder digitale Stimmabgabe und Auszählung.\n\n7.7 Abstimmungen erfolgen in geheimer Stimmabgabe, wenn ein Mitglied dies beantragt.\n\n7.8 Bei Satzungsänderungen ist auf diesen Tagesordnungspunkt in der Einladung zur Mitgliederversammlung hinzuweisen. Der Einladung sind sowohl der bisherige als auch der vorgesehene neue Text beizufügen.\n\n7.9 Über Beschlüsse der Mitgliederversammlung ist eine Niederschrift zu fertigen, die vom jeweiligen Leiter der Sitzung und dem Protokollführer zu unterzeichnen ist. Es soll folgende Feststellungen enthalten:\na) Ort und Zeit der Versammlung\nb) die Person des Versammlungsleiters und des Protokollführers\nc) die Zahl der erschienenen Mitglieder\nd) die Tagesordnung\ne) die Art der Abstimmung\nf) die Abstimmungsergebnisse\ng) eventuelle Satzungsänderungen sind im genauen Wortlaut anzugeben",
     "woerter": [
       "mitgliederversammlung",
       "versammlung",
       "einladung",
       "einladungsfrist",
+      "e-mail",
+      "mail",
+      "aushang",
       "tagesordnung",
       "zwei wochen",
       "abstimmung",
       "mehrheit",
+      "drei viertel",
       "beschluss",
       "beschlussfähig",
       "satzungsänderung",
@@ -6923,12 +6952,13 @@
       "kassenprüfer",
       "jahresbericht",
       "entlastung",
-      "protokoll"
+      "protokoll",
+      "digital"
     ]
   },
   {
     "titel": "§8 Die Revision",
-    "inhalt": "Die Revision erfolgt durch zwei Kassenprüfer.\n\nDie Kassenprüfer werden durch die\nMitgliederversammlung gewählt und sind\nihr rechenschaftspflichtig.\n\nSie kontrollieren die Finanzen des Vereins\nund deren ordnungsgemäße Verwendung\ndurch den Vorstand.\n\nDie Kassenprüfer haben das Recht zur Einsicht\nin alle Bücher, Schriften und Bestände\ndes Vorstandes.\n\nBei Bedarf dürfen sie einen\nvereinsunabhängigen Steuerberater oder\nWirtschaftsprüfer hinzuziehen.\n\nDie Vorstandsmitglieder sind ihnen gegenüber\nauskunftspflichtig.\n\nDie Prüfungsergebnisse sind im Vorstand\nauszuwerten.\n\nSie bilden die Grundlage zur Entlastung\ndes Vorstandes.",
+    "inhalt": "8.1 Die Revision erfolgt durch je 2 Kassenprüfer. Diese werden durch die Mitgliederversammlung gewählt und sind ihr rechenschaftspflichtig.\n\n8.2 Die Kassenprüfer überprüfen in Wahrnehmung ihrer Verantwortung die Kontrolle der Finanzen des Vereins und deren ordnungsgemäße Verwendung durch den Vorstand. Sie haben das Recht zur Einsicht in alle Bücher und Schriften und Bestände des Vorstandes und dürfen sich bei Bedarf eines vereinsunabhängigen Steuerberaters oder Wirtschaftsprüfers auf eigene Kosten bedienen.\n\n8.3 Die Vorstandsmitglieder sind ihnen gegenüber auskunftspflichtig.\n\n8.4 Die Kassenprüfer berichten der Mitgliederversammlung über das Ergebnis ihrer Prüfung. Der Prüfungsbericht bildet die Grundlage für die Entlastung des Vorstandes.",
     "woerter": [
       "revision",
       "kassenprüfer",
@@ -6943,7 +6973,7 @@
   },
   {
     "titel": "§9 Vereinsauflösung",
-    "inhalt": "Die Auflösung des Vereins erfolgt durch\nBeschluss der Mitgliederversammlung.\n\nDrei Viertel der erschienenen Mitglieder\nmüssen für die Auflösung stimmen.\n\nDie Auflösung kann nur beschlossen werden,\nwenn auf diesen Tagesordnungspunkt in der\nEinladung hingewiesen wurde.\n\nBei Auflösung des Vereins oder bei Wegfall\nsteuerbegünstigter Zwecke fällt das Vermögen\nan den Träger der Evangelischen\nKindertagesstätte Himmelsleiter.\n\nDer Träger muss das Vermögen für die Förderung\nder Bildung und Erziehung in der Evangelischen\nKindertagesstätte Himmelsleiter verwenden.",
+    "inhalt": "9.1 Die Auflösung des Vereins erfolgt durch Beschluss der Mitgliederversammlung, wobei ¾ der erschienenen Mitglieder für die Auflösung stimmen müssen. Die Auflösung des Vereins kann in der Mitgliederversammlung nur dann beschlossen werden, wenn auf diesen Tagesordnungspunkt in der Einladung hingewiesen wurde.\n\n9.2 Bei Auflösung des Vereins oder bei Wegfall steuerbegünstigter Zwecke fällt das Vermögen des Vereins an das Evangelische Diakonissenhaus Berlin Teltow Lehnin als Träger der Evangelischen Kindertagesstätte Himmelsleiter, das es unmittelbar und ausschließlich für gemeinnützige Zwecke, und zwar zur Förderung von Bildung und Erziehung in der Evangelischen Kindertagesstätte Himmelsleiter, zu verwenden hat.",
     "woerter": [
       "auflösung",
       "vereinsauflösung",
@@ -6951,12 +6981,13 @@
       "vermögen",
       "dreiviertel",
       "3/4",
-      "träger"
+      "träger",
+      "diakonissenhaus"
     ]
   },
   {
     "titel": "§10 Salvatorische Klauseln",
-    "inhalt": "Sollten Teile oder einzelne Bestimmungen\nder Satzung ungültig sein oder bestehenden\noder künftigen Rechtsvorschriften widersprechen,\nbleibt die Gültigkeit der übrigen Satzung\ndavon unberührt.\n\nDie Vereinsmitglieder sind in diesem Fall\nverpflichtet, die fragliche Bestimmung so\nzu ersetzen, dass der damit beabsichtigte\nZweck erreicht wird.\n\nGleiches gilt, wenn sich bei der Durchführung\nder Satzung eine ergänzungsbedürftige\nLücke herausstellt.",
+    "inhalt": "10.1 Sollten Teile oder einzelne Bestimmungen dieser Satzung ungültig sein oder bestehenden oder künftigen Rechtsvorschriften widersprechen, so wird die Gültigkeit der übrigen Satzung davon nicht berührt.\n\n10.2 Die Vereinsmitglieder sind in einem solchen Fall verpflichtet, die fragliche Bestimmung so zu ersetzen, dass der mit ihr beabsichtigte Zweck erreicht wird. Gleiches gilt, wenn sich bei der Durchführung der Satzung eine ergänzungsbedürftige Lücke herausstellen sollte.",
     "woerter": [
       "salvatorisch",
       "ungültig",
