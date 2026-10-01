@@ -914,6 +914,7 @@
               <th>Turnus</th>
               <th>Gültig ab</th>
               <th>Zugeordnete Mitglieder</th>
+              <th class="beitrag-aktion-spalte"></th>
             </tr>
           </thead>
           <tbody id="beitraegeBody"></tbody>
@@ -3724,7 +3725,7 @@
   // BEITRAGSORDNUNG
   // =====================================================
   async function loadBeitragsordnung() {
-    beitraegeBody.innerHTML = '<tr><td colspan="5" style="color:#8a99a8; padding:24px 12px;">Lädt …</td></tr>';
+    beitraegeBody.innerHTML = '<tr><td colspan="6" style="color:#8a99a8; padding:24px 12px;">Lädt …</td></tr>';
     const { data, error } = await supabaseClient.from('beitragsordnung').select('*').order('beitragsart');
     if (error) {
       beitraegeBody.innerHTML = '';
@@ -3749,6 +3750,9 @@
     }
     beitraegeEmptyState.classList.add('hidden');
 
+    const istAdmin = currentRolle === 'admin';
+    document.querySelectorAll('.beitrag-aktion-spalte').forEach(th => th.classList.toggle('hidden', !istAdmin));
+
     for (const b of list) {
       const anzahl = zuordnungen.filter(z => z.beitragsordnung_id === b.id).length;
       const tr = document.createElement('tr');
@@ -3758,9 +3762,46 @@
         <td>${b.turnus}</td>
         <td>${formatDatum(b.gueltig_ab)}</td>
         <td>${anzahl}</td>
+        ${istAdmin ? `<td style="text-align:right;">
+          <button type="button" class="ghost beitrag-loeschen" data-id="${b.id}" data-anzahl="${anzahl}"
+            style="padding:6px 12px; font-size:13px;"
+            title="${anzahl > 0 ? 'Wird noch von Mitgliedern genutzt' : 'Beitragsart löschen'}">🗑 Löschen</button>
+        </td>` : ''}
       `;
       beitraegeBody.appendChild(tr);
     }
+
+    beitraegeBody.querySelectorAll('.beitrag-loeschen').forEach(btn => {
+      btn.addEventListener('click', () => beitragsartLoeschen(btn.dataset.id, Number(btn.dataset.anzahl)));
+    });
+  }
+
+  async function beitragsartLoeschen(id, anzahl) {
+    const b = allBeitragsordnung.find(x => x.id === id);
+    if (!b) return;
+    const name = `${b.beitragsart} – ${formatBetrag(b.betrag)}`;
+
+    if (anzahl > 0) {
+      alert(`„${name}“ kann nicht gelöscht werden, weil sie noch ${anzahl} ` +
+        (anzahl === 1 ? 'Mitglied' : 'Mitgliedern') +
+        ' zugeordnet ist.\n\nStell diese Mitglieder zuerst auf eine andere Beitragsart um.');
+      return;
+    }
+    if (!confirm(`Beitragsart „${name}“ wirklich löschen?\n\nDas lässt sich nicht rückgängig machen.`)) return;
+
+    const { data: geloescht, error } = await supabaseClient.from('beitragsordnung').delete().eq('id', id).select('id');
+    if (!error && (!geloescht || geloescht.length === 0)) {
+      alert('Die Beitragsart wurde nicht gelöscht – es fehlt die Berechtigung. Ist „beitragsart_loeschen.sql“ schon ausgeführt?');
+      return;
+    }
+    if (error) {
+      const msg = error.code === '23503'
+        ? 'Diese Beitragsart wird noch verwendet (z. B. in Mitgliedern oder Mitgliedsanträgen) und kann deshalb nicht gelöscht werden.'
+        : 'Löschen fehlgeschlagen: ' + error.message;
+      alert(msg);
+      return;
+    }
+    await loadBeitragsordnung();
   }
 
   newBeitragBtn.addEventListener('click', () => {
