@@ -372,7 +372,7 @@
             <li>Name, Anschrift, Telefon, E-Mail</li>
             <li>Name und Gruppe deines Kindes</li>
             <li>Bankverbindung (nur bei SEPA-Lastschrift)</li>
-            <li>deine Unterschrift zu diesem Antrag</li>
+            <li>deine Unterschrift (nur beim SEPA-Lastschriftmandat)</li>
           </ul>
           <h4>4. Empfänger</h4>
           <p>Deine Daten werden ausschließlich innerhalb des Vorstands verarbeitet. Eine Weitergabe an Dritte erfolgt nur, soweit gesetzlich vorgeschrieben (z. B. Finanzamt) oder technisch notwendig (z. B. Bank beim Lastschrifteinzug, Hosting der Vereinsverwaltung).</p>
@@ -386,10 +386,10 @@
       <label class="check"><input type="checkbox" id="foto"> <span>Ich bin damit einverstanden, dass Fotos meines Kindes bei Vereinsveranstaltungen für interne Vereinszwecke (z. B. Aushänge, Vereinszeitung) verwendet werden. <span style="color:var(--ink-soft)">(freiwillig, jederzeit widerruflich)</span></span></label>
     </section>
 
-    <!-- 6. Unterschrift -->
-    <section class="card">
-      <h2><span class="num">6</span> Unterschrift</h2>
-      <p class="hint">Mit dem Finger oder der Maus im Feld unterschreiben.</p>
+    <!-- 6. Unterschrift (nur bei SEPA-Lastschrift) -->
+    <section class="card" id="unterschriftBereich">
+      <h2><span class="num">6</span> Unterschrift zum SEPA-Mandat</h2>
+      <p class="hint">Für den Lastschrifteinzug brauchen wir deine Unterschrift. Mit dem Finger oder der Maus im Feld unterschreiben.</p>
       <label for="unterschriftOrt">Ort</label>
       <input type="text" id="unterschriftOrt" maxlength="80">
       <div class="sig-wrap" id="sigWrap">
@@ -517,7 +517,11 @@
   // ---------------- Zahlungsweise / IBAN ----------------
   function zahlungsweise() { return document.querySelector('input[name=zahlungsweise]:checked').value; }
   document.querySelectorAll('input[name=zahlungsweise]').forEach(r => r.addEventListener('change', () => {
-    $('sepaBereich').classList.toggle('hidden', zahlungsweise() !== 'lastschrift');
+    const lastschrift = zahlungsweise() === 'lastschrift';
+    $('sepaBereich').classList.toggle('hidden', !lastschrift);
+    $('unterschriftBereich').classList.toggle('hidden', !lastschrift);
+    // Unterschriftsfeld war ggf. ausgeblendet -> Größe neu berechnen
+    if (lastschrift && strichLaenge === 0) groesseAnpassen();
   }));
 
   function ibanNormalisieren(v) { return (v || '').replace(/\s+/g, '').toUpperCase(); }
@@ -657,7 +661,7 @@
       if (!$('sepaMandat').checked) return fehler('Bitte das SEPA-Lastschriftmandat bestätigen – oder „Überweisung“ wählen.', $('sepaMandat'));
     }
     if (!$('datenschutz').checked) return fehler('Bitte bestätige, dass du die Datenschutz-Informationen gelesen hast.', $('datenschutz'));
-    if (strichLaenge < 40) {
+    if (zw === 'lastschrift' && strichLaenge < 40) {
       $('sigWrap').classList.add('invalid');
       return fehler('Bitte unterschreibe im Unterschriftsfeld.', $('sigWrap'));
     }
@@ -683,8 +687,8 @@
       satzung_anerkannt: $('satzungAnerkannt').checked,
       volljaehrig_bestaetigt: $('volljaehrig').checked,
       foto_einwilligung: $('foto').checked,
-      unterschrift_ort: wert('unterschriftOrt'),
-      unterschrift: unterschriftAlsBild(),
+      unterschrift_ort: zw === 'lastschrift' ? wert('unterschriftOrt') : null,
+      unterschrift: zw === 'lastschrift' ? unterschriftAlsBild() : null,
     };
 
     const btn = $('submitBtn');
