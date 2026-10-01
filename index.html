@@ -7669,6 +7669,7 @@ Dein Vorstand`;
   // ---------------- QR-Code ----------------
   const qrModal = document.getElementById('qrModal');
   let qrUrl = '';
+  let qrKontakt = '';
 
   function peLadeSkript(src) {
     return new Promise((resolve, reject) => {
@@ -7692,6 +7693,7 @@ Dein Vorstand`;
     url.hash = '';
     url.searchParams.set('v', einst.organization_id);
     qrUrl = url.href;
+    qrKontakt = (einst.benachrichtigung_email || '').split(',')[0].trim();
 
     document.getElementById('qrLink').textContent = qrUrl;
     const bild = document.getElementById('qrBild');
@@ -7721,27 +7723,103 @@ Dein Vorstand`;
     }
   });
 
+  function aushangMitgliedsantragHtml({ svg, verein, logo, link, kontakt }) {
+    const farben = ['#f4b400', '#f08a24', '#e5484d', '#2f9bd6', '#2cb67d'];
+    const streifen = (umgekehrt) => `<div class="streifen">${(umgekehrt ? [...farben].reverse() : farben).map(f => `<span style="background:${f}"></span>`).join('')}</div>`;
+    const schritte = [
+      ['QR-Code scannen', 'Öffne die Kamera-App deines Handys und richte sie auf den QR-Code unten – oder tippe den Link ein.'],
+      ['Daten eingeben', 'Trage deine Kontaktdaten ein und – wenn du magst – auch dein Kita-Kind.'],
+      ['Satzung bestätigen', 'Lies die Satzung und bestätige sie mit einem Häkchen.'],
+      ['Absenden', 'Fertig! Die Bestätigung kommt direkt per E-Mail – ganz ohne Papierkram.'],
+    ];
+    return `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>Aushang Mitgliedsantrag</title>
+      <link href="https://fonts.googleapis.com/css2?family=Lora:wght@700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+      <style>
+        @page { size: A4; margin: 0; }
+        * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        html, body { margin: 0; }
+        body { font-family: Inter, Arial, sans-serif; color: #1b4332; width: 210mm; height: 296mm; display: flex; flex-direction: column; overflow: hidden; }
+        .streifen { display: flex; height: 9mm; flex: none; }
+        .streifen span { flex: 1; }
+        main { flex: 1; padding: 9mm 16mm 5mm; display: flex; flex-direction: column; }
+        header { display: flex; justify-content: space-between; align-items: center; gap: 10mm; }
+        .verein { font-family: Lora, Georgia, serif; font-size: 24pt; line-height: 1.15; margin: 0; font-weight: 700; }
+        .ort { color: #e5484d; font-size: 11.5pt; margin-top: 2mm; }
+        .logo { width: 40mm; height: 40mm; object-fit: contain; border-radius: 50%; background: #fff; padding: 2mm;
+                box-shadow: 0 0 0 2.2mm #f4b400, 0 0 0 4.2mm #2f9bd6; margin-right: 4mm; }
+        h1 { font-family: Lora, Georgia, serif; font-size: 33pt; text-align: center; margin: 7mm 0 2mm; line-height: 1.1; }
+        h1 em { font-style: normal; color: #2cb67d; }
+        .sub { text-align: center; font-size: 12.5pt; color: #4a5c53; margin: 0 0 6mm; }
+        .vorteile { display: flex; gap: 3mm; justify-content: center; margin-bottom: 6mm; }
+        .vorteile div { flex: 1; text-align: center; background: #f3f8f5; border-radius: 4mm; padding: 3mm 2mm; font-size: 10pt; font-weight: 600; }
+        .vorteile b { display: block; font-size: 18pt; margin-bottom: 1mm; }
+        .schritt { display: flex; align-items: flex-start; gap: 6mm; margin: 0 6mm 4mm; }
+        .nr { flex: none; width: 13mm; height: 13mm; border-radius: 50%; color: #fff; font-weight: 700; font-size: 16pt;
+              display: flex; align-items: center; justify-content: center; }
+        .schritt h3 { margin: 0.6mm 0 1mm; font-size: 14pt; }
+        .schritt p { margin: 0; font-size: 11pt; color: #4a5c53; line-height: 1.4; }
+        .qrbox { margin-top: auto; border: 0.8mm solid #1b4332; border-radius: 7mm; background: #f6f8f7;
+                 display: flex; align-items: center; gap: 9mm; padding: 6mm 9mm; }
+        .qr { flex: none; background: #fff; border-radius: 4mm; padding: 4mm; border: 0.4mm solid #dfe7e2; }
+        .qr svg { width: 44mm; height: 44mm; display: block; }
+        .qrtext h2 { font-family: Lora, Georgia, serif; font-size: 21pt; margin: 0 0 3mm; }
+        .qrtext p { margin: 0 0 3mm; font-size: 11pt; color: #4a5c53; }
+        .link { font-family: 'Courier New', monospace; font-size: 8.5pt; color: #2f6f8f; word-break: break-all; }
+        footer { text-align: center; margin-top: 4mm; font-size: 11pt; }
+        footer a { color: #1b4332; font-weight: 700; }
+        footer .gruss { color: #6b7d74; font-style: italic; font-size: 10pt; margin-top: 1.5mm; }
+      </style></head><body>
+      ${streifen(false)}
+      <main>
+        <header>
+          <div>
+            <p class="verein">${escapeHtml(verein)}</p>
+            <div class="ort">Ev. Kindertagesstätte Himmelsleiter · Ludwigsfelde</div>
+          </div>
+          ${logo ? `<img class="logo" src="${logo}" alt="Logo">` : ''}
+        </header>
+
+        <h1>Werde Teil der <em>Himmelsleiter!</em></h1>
+        <p class="sub">Gemeinsam machen wir unsere Kita noch schöner – so wirst du in wenigen Minuten Mitglied.</p>
+
+        <div class="vorteile">
+          <div><b>🎨</b>Spiel- &amp; Bastelmaterial</div>
+          <div><b>🚌</b>Ausflüge</div>
+          <div><b>🎉</b>Feste &amp; Aktionen</div>
+          <div><b>🌳</b>Außengelände</div>
+        </div>
+
+        ${schritte.map(([t, p], i) => `
+          <div class="schritt">
+            <div class="nr" style="background:${farben[i]}">${i + 1}</div>
+            <div><h3>${t}</h3><p>${p}</p></div>
+          </div>`).join('')}
+
+        <div class="qrbox">
+          <div class="qr">${svg}</div>
+          <div class="qrtext">
+            <h2>Jetzt Mitglied werden</h2>
+            <p>Scannen, ausfüllen, absenden – fertig!</p>
+            <div class="link">${escapeHtml(link)}</div>
+          </div>
+        </div>
+
+        <footer>
+          ${kontakt ? `Fragen? <a href="mailto:${escapeHtml(kontakt)}">${escapeHtml(kontakt)}</a>` : 'Fragen? Sprich uns einfach in der Kita an.'}
+          <div class="gruss">Wir freuen uns auf dich! 💛</div>
+        </footer>
+      </main>
+      ${streifen(true)}
+      <script>window.onload = () => setTimeout(() => window.print(), 500);<\/script>
+      </body></html>`;
+  }
+
   document.getElementById('qrDruckenBtn').addEventListener('click', () => {
     const svg = document.getElementById('qrBild').innerHTML;
+    const logo = document.querySelector('img[src^="data:image/png"]')?.src || '';
     const w = window.open('', '_blank');
     if (!w) return;
-    w.document.write(`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>Aushang Mitgliedsantrag</title>
-      <link href="https://fonts.googleapis.com/css2?family=Lora:wght@700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
-      <style>
-        @page { size: A4; margin: 18mm; }
-        body { font-family: Inter, sans-serif; color: #1b4332; text-align: center; margin: 0; }
-        h1 { font-family: Lora, serif; font-size: 40px; margin: 30px 0 6px; }
-        .sub { font-size: 20px; color: #5a6b62; margin: 0 0 34px; }
-        .qr { display: inline-block; padding: 18px; border: 3px solid #2cb67d; border-radius: 22px; }
-        .qr svg { width: 110mm; height: 110mm; display: block; }
-        ol { display: inline-block; text-align: left; font-size: 19px; line-height: 1.8; margin: 34px 0 0; }
-      </style></head><body>
-      <h1>Werde Mitglied!</h1>
-      <p class="sub">${escapeHtml(peVerein())}</p>
-      <div class="qr">${svg}</div>
-      <br><ol><li>QR-Code mit der Handy-Kamera scannen</li><li>Antrag ausfüllen und unterschreiben</li><li>Absenden – fertig!</li></ol>
-      <script>window.onload = () => setTimeout(() => window.print(), 300);<\/script>
-      </body></html>`);
+    w.document.write(aushangMitgliedsantragHtml({ svg, verein: peVerein(), logo, link: qrUrl, kontakt: qrKontakt }));
     w.document.close();
   });
 
