@@ -1633,6 +1633,7 @@
             <div class="akte-field"><div class="k">Mandatsreferenz</div><div class="v" id="detailMandatsref"></div></div>
             <div class="akte-field"><div class="k">Mandat vom</div><div class="v" id="detailMandatDatum"></div></div>
           </div>
+          <button type="button" class="ghost hidden" id="detailMandatBtn" style="margin-top:10px; padding:8px 14px; font-size:13.5px;">📄 SEPA-Mandat als PDF / drucken</button>
         </div>
 
         <div class="akte-section">
@@ -6814,6 +6815,130 @@
   }
 
   // Bankdaten in der Akte anzeigen
+  // =====================================================
+  // SEPA-LASTSCHRIFTMANDAT ALS DOKUMENT (Druck / PDF)
+  // =====================================================
+  let akteMandat = null;   // { mandat, mitglied }
+
+  function mandatHtml({ verein, mandat, mitglied }) {
+    const e = (v) => escapeHtml(v == null ? '' : String(v));
+    const fehlt = (v, text) => v ? e(v) : `<span class="fehlt">${text}</span>`;
+    const name = mandat.kontoinhaber || `${mitglied.vorname || ''} ${mitglied.nachname || ''}`.trim();
+    const anschrift = [mitglied.strasse, [mitglied.plz, mitglied.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+    const ort = mandat.unterschrift_ort || mitglied.ort || '';
+    const datum = mandat.unterschrift_datum ? formatDatum(mandat.unterschrift_datum) : '';
+    const unterschrift = mandat.unterschrift_bild
+      ? `<img src="${mandat.unterschrift_bild}" alt="Unterschrift">`
+      : '';
+    const vereinName = verein.name || 'Förderverein Kita Himmelsleiter';
+
+    return `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
+      <title>SEPA-Lastschriftmandat ${e(mandat.mandatsreferenz)}</title>
+      <style>
+        @page { size: A4; margin: 18mm 18mm 16mm; }
+        * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        body { font-family: Arial, Helvetica, sans-serif; color: #1a1a1a; font-size: 10.5pt; line-height: 1.45; margin: 0; }
+        h1 { font-size: 17pt; margin: 0 0 1mm; }
+        .unter { color: #555; margin: 0 0 7mm; }
+        .block { border: 0.3mm solid #999; border-radius: 2mm; padding: 4mm 5mm; margin-bottom: 5mm; }
+        .block h2 { font-size: 10pt; text-transform: uppercase; letter-spacing: 0.04em; color: #555; margin: 0 0 2.5mm; }
+        table { width: 100%; border-collapse: collapse; }
+        td { padding: 1.2mm 0; vertical-align: top; }
+        td.k { width: 48mm; color: #555; }
+        td.v { font-weight: bold; }
+        .mono { font-family: 'Courier New', monospace; letter-spacing: 0.04em; }
+        .text p { margin: 0 0 2.5mm; text-align: justify; }
+        .unterschrift { display: flex; gap: 10mm; margin-top: 6mm; align-items: flex-end; }
+        .unterschrift > div { flex: 1; }
+        .feld { border-bottom: 0.3mm solid #1a1a1a; height: 22mm; display: flex; align-items: flex-end; padding-bottom: 1mm; }
+        .feld img { max-height: 21mm; max-width: 100%; }
+        .feld span { font-size: 11pt; }
+        .lbl { font-size: 8.5pt; color: #555; margin-top: 1mm; }
+        .fehlt { color: #c0392b; font-weight: normal; font-style: italic; }
+        .fuss { margin-top: 8mm; font-size: 8.5pt; color: #666; border-top: 0.2mm solid #ccc; padding-top: 3mm; }
+      </style></head><body>
+      <h1>SEPA-Lastschriftmandat</h1>
+      <p class="unter">für wiederkehrende Zahlungen (Mitgliedsbeitrag)</p>
+
+      <div class="block">
+        <h2>Zahlungsempfänger</h2>
+        <table>
+          <tr><td class="k">Name</td><td class="v">${e(vereinName)}</td></tr>
+          <tr><td class="k">Anschrift</td><td class="v">${fehlt(verein.anschrift, 'Vereinsanschrift fehlt')}</td></tr>
+          <tr><td class="k">Gläubiger-Identifikationsnr.</td><td class="v mono">${fehlt(verein.glaeubiger_id, 'Gläubiger-ID noch nicht hinterlegt')}</td></tr>
+          <tr><td class="k">Mandatsreferenz</td><td class="v mono">${fehlt(mandat.mandatsreferenz, 'fehlt')}</td></tr>
+        </table>
+      </div>
+
+      <div class="block text">
+        <h2>Mandat</h2>
+        <p>Ich ermächtige den Zahlungsempfänger <strong>${e(vereinName)}</strong>, Zahlungen von meinem Konto mittels Lastschrift einzuziehen. Zugleich weise ich mein Kreditinstitut an, die vom Zahlungsempfänger auf mein Konto gezogenen Lastschriften einzulösen.</p>
+        <p><strong>Hinweis:</strong> Ich kann innerhalb von acht Wochen, beginnend mit dem Belastungsdatum, die Erstattung des belasteten Betrages verlangen. Es gelten dabei die mit meinem Kreditinstitut vereinbarten Bedingungen.</p>
+        <p>Zahlungsart: <strong>wiederkehrende Zahlung</strong> · Verwendungszweck: Mitgliedsbeitrag${mitglied.mitgliedsnummer ? ', Mitglieds-Nr. ' + e(mitglied.mitgliedsnummer) : ''}</p>
+      </div>
+
+      <div class="block">
+        <h2>Zahlungspflichtige/r (Kontoinhaber/in)</h2>
+        <table>
+          <tr><td class="k">Name</td><td class="v">${fehlt(name, 'fehlt')}</td></tr>
+          <tr><td class="k">Anschrift</td><td class="v">${fehlt(anschrift, 'fehlt')}</td></tr>
+          <tr><td class="k">IBAN</td><td class="v mono">${fehlt(ibanFormatieren(mandat.iban), 'fehlt')}</td></tr>
+          ${mandat.kontoinhaber && mandat.kontoinhaber !== `${mitglied.vorname} ${mitglied.nachname}`
+            ? `<tr><td class="k">Für Mitglied</td><td class="v">${e(mitglied.vorname)} ${e(mitglied.nachname)}</td></tr>` : ''}
+        </table>
+      </div>
+
+      <div class="unterschrift">
+        <div>
+          <div class="feld"><span>${e(ort)}${ort && datum ? ', ' : ''}${e(datum)}</span></div>
+          <div class="lbl">Ort, Datum</div>
+        </div>
+        <div>
+          <div class="feld">${unterschrift}</div>
+          <div class="lbl">Unterschrift Kontoinhaber/in</div>
+        </div>
+      </div>
+
+      <div class="fuss">
+        ${mandat.unterschrift_bild
+          ? `Die Unterschrift wurde am ${e(datum)} handschriftlich im Online-Mitgliedsantrag geleistet und auf dieses Mandat übertragen.`
+          : 'Bitte ausdrucken, handschriftlich unterschreiben und an den Verein zurückgeben.'}
+        Erstellt am ${e(new Date().toLocaleDateString('de-DE'))}.
+      </div>
+      <script>window.onload = () => setTimeout(() => window.print(), 400);<\/script>
+      </body></html>`;
+  }
+
+  async function mandatDrucken() {
+    if (!akteMandat) return;
+    const { data: verein, error } = await supabaseClient.rpc('mandat_vereinsdaten');
+    if (error || !verein) {
+      alert('Die Vereinsdaten für das Mandat konnten nicht geladen werden. Ist „sepa_mandat_dokument.sql“ schon ausgeführt?');
+      return;
+    }
+    if (!verein.anschrift) {
+      if (currentRolle !== 'admin') {
+        alert('Auf jedem SEPA-Mandat muss die Vereinsanschrift stehen. Bitte den Admin, sie einmalig zu hinterlegen.');
+        return;
+      }
+      const eingabe = prompt('Auf jedem SEPA-Mandat muss die Anschrift des Vereins stehen.\nBitte einmalig eintragen (z. B. „Straße 1, 14974 Ludwigsfelde“):');
+      if (!eingabe || !eingabe.trim()) return;
+      const { error: speicherFehler } = await supabaseClient.rpc('vereinsanschrift_speichern', { p_anschrift: eingabe.trim() });
+      if (speicherFehler) { alert('Speichern fehlgeschlagen: ' + speicherFehler.message); return; }
+      verein.anschrift = eingabe.trim();
+    }
+    if (!verein.glaeubiger_id &&
+        !confirm('Es ist noch keine Gläubiger-ID hinterlegt (Posteingang → Einstellungen). Das Mandat ist ohne sie nicht vollständig.\n\nTrotzdem als Entwurf öffnen?')) {
+      return;
+    }
+    const w = window.open('', '_blank');
+    if (!w) return;
+    w.document.write(mandatHtml({ verein, ...akteMandat }));
+    w.document.close();
+  }
+
+  document.getElementById('detailMandatBtn').addEventListener('click', mandatDrucken);
+
   async function bankdatenFuerAkte(mitgliedId) {
     const wrap = document.getElementById('detailBankWrap');
     if (!darfBankdatenSehen()) {
@@ -6825,6 +6950,10 @@
     const { data } = await supabaseClient
       .from('sepa_mandate').select('*')
       .eq('mitglied_id', mitgliedId).eq('status', 'aktiv').maybeSingle();
+
+    const mandatBtn = document.getElementById('detailMandatBtn');
+    akteMandat = data ? { mandat: data, mitglied: allMembers.find(x => x.id === mitgliedId) || {} } : null;
+    mandatBtn.classList.toggle('hidden', !data);
 
     if (!data) {
       fillDetail('detailIban', null);
