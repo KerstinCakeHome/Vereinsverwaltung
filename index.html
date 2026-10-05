@@ -1385,7 +1385,7 @@
       <label for="nutzerEmail">E-Mail</label>
       <input type="email" id="nutzerEmail" required />
       <label for="nutzerPasswort">Vorläufiges Passwort</label>
-      <input type="text" id="nutzerPasswort" placeholder="mind. 6 Zeichen" required minlength="6" />
+      <input type="text" id="nutzerPasswort" placeholder="mind. 10 Zeichen" required minlength="10" />
       <p style="font-size:12.5px; color:var(--ink-soft); margin:-10px 0 14px;">
         Dieses Passwort dem Nutzer mitteilen – er kann es sich später selbst nicht direkt ändern, es sei denn ihr richtet das noch ein.
       </p>
@@ -4211,10 +4211,10 @@
   // ---- Passwort neu setzen ----
   resetPasswortBtn.addEventListener('click', async () => {
     if (!aktuellerEditNutzer) return;
-    const neuesPasswort = prompt('Neues vorläufiges Passwort (mind. 6 Zeichen):');
+    const neuesPasswort = prompt('Neues vorläufiges Passwort (mind. 10 Zeichen):');
     if (!neuesPasswort) return;
-    if (neuesPasswort.length < 6) {
-      showMsg(nutzerEditMsg, 'Das Passwort muss mindestens 6 Zeichen haben.', 'error');
+    if (neuesPasswort.length < 10) {
+      showMsg(nutzerEditMsg, 'Das Passwort muss mindestens 10 Zeichen haben.', 'error');
       return;
     }
     clearMsg(nutzerEditMsg);
@@ -4243,13 +4243,23 @@
   });
 
   // Ruft die Edge Function "manage-user" auf; gibt null zurück oder eine Fehlermeldung
+  // Liest die verständliche Fehlermeldung aus der Antwort einer Edge Function
+  async function edgeFehlertext(data, error) {
+    if (data && data.error) return data.error;
+    try {
+      const body = await error?.context?.json();
+      if (body && body.error) return body.error;
+    } catch (_) { /* keine JSON-Antwort */ }
+    return 'Die Aktion konnte nicht ausgeführt werden. Bitte später noch einmal versuchen.';
+  }
+
   async function nutzerAktion(action, userId, newPassword) {
     try {
       const { data, error } = await supabaseClient.functions.invoke('manage-user', {
         body: { action, userId, newPassword },
       });
       if (error || (data && data.error)) {
-        return (data && data.error) ? data.error : error.message;
+        return await edgeFehlertext(data, error);
       }
       return null;
     } catch (err) {
@@ -4290,7 +4300,7 @@
       saveBtn.textContent = 'Nutzer anlegen';
 
       if (error || (data && data.error)) {
-        const msg = (data && data.error) ? data.error : error.message;
+        const msg = await edgeFehlertext(data, error);
         showMsg(nutzerModalMsg, 'Fehler: ' + msg, 'error');
         return;
       }
