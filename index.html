@@ -4,12 +4,10 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <!-- Sicherheit: erlaubte Quellen (Content Security Policy) und Referrer-Regel -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://kojybldatglnzvyhtrrd.supabase.co; connect-src 'self' https://kojybldatglnzvyhtrrd.supabase.co wss://kojybldatglnzvyhtrrd.supabase.co https://api.emailjs.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https://kojybldatglnzvyhtrrd.supabase.co; connect-src 'self' https://kojybldatglnzvyhtrrd.supabase.co wss://kojybldatglnzvyhtrrd.supabase.co https://api.emailjs.com; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <title>Förderverein Himmelsleiter – Vereinsverwaltung</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="fonts/fonts.css" rel="stylesheet">
 <style>
   :root {
     --forest: #1b4332;
@@ -8174,7 +8172,7 @@ Dein Vorstand`;
       ['Absenden', 'Fertig! Die Bestätigung kommt direkt per E-Mail – ganz ohne Papierkram.'],
     ];
     return `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>Aushang Mitgliedsantrag</title>
-      <link href="https://fonts.googleapis.com/css2?family=Lora:wght@700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+      <link href="${new URL('fonts/fonts.css', location.href).href}" rel="stylesheet">
       <style>
         @page { size: A4; margin: 0; }
         * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -8446,7 +8444,7 @@ Dein Vorstand`;
     const w = window.open('', '_blank');
     if (!w) return;
     w.document.write(`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>Aushang Spenden</title>
-      <link href="https://fonts.googleapis.com/css2?family=Lora:wght@700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+      <link href="${new URL('fonts/fonts.css', location.href).href}" rel="stylesheet">
       <style>
         @page { size: A4; margin: 18mm; }
         body { font-family: Inter, sans-serif; color: #1b4332; text-align: center; margin: 0; }
