@@ -1266,13 +1266,18 @@
       <div style="margin-top:30px; padding-top:22px; border-top:1px solid #e5edf3;">
         <div class="label" style="font-size:11.5px; text-transform:uppercase; letter-spacing:0.04em; color:#93a3b1; font-weight:600; margin-bottom:10px;">Datensicherung</div>
         <div id="backupMsg" class="msg"></div>
-        <button type="button" class="ghost" id="backupBtn">Alle Daten als Datei sichern</button>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button type="button" class="ghost" id="backupBtn">🔒 Verschlüsselte Sicherung erstellen</button>
+          <button type="button" class="ghost" id="backupOeffnenBtn">Sicherung entschlüsseln …</button>
+        </div>
         <p style="font-size:12.5px; color:var(--ink-soft); margin:12px 0 0;">
-          Lädt sämtliche Vereinsdaten als JSON-Datei herunter. Im kostenlosen Supabase-Tarif gibt es
-          <strong>keine automatischen Backups</strong> – diese Sicherung solltet ihr regelmäßig machen
-          und außerhalb der Software aufbewahren. Hochgeladene Dokumente sind nicht enthalten,
-          die müssen bei Bedarf einzeln gesichert werden.
+          Lädt sämtliche Vereinsdaten als <strong>passwortgeschützte</strong> Datei (.vbak) herunter – inklusive
+          Bankdaten. Vor dem Erstellen wird dein Zwei-Faktor-Code erneut abgefragt, jede Sicherung wird protokolliert.
+          Im kostenlosen Supabase-Tarif gibt es <strong>keine automatischen Backups</strong> – sichert regelmäßig
+          und bewahrt Datei und Passwort <strong>getrennt</strong> außerhalb der Software auf. Ohne Passwort lässt sich
+          die Sicherung nicht wiederherstellen. Hochgeladene Dokumente sind nicht enthalten.
         </p>
+        <div id="backupProtokoll" style="margin-top:14px; font-size:12.5px; color:var(--ink-soft);"></div>
       </div>
     </div>
 
@@ -1399,6 +1404,52 @@
       <div class="modal-actions">
         <button type="button" class="ghost" id="cancelNutzerModalBtn">Abbrechen</button>
         <button type="submit" class="primary" id="saveNutzerBtn">Nutzer anlegen</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ===================== MODAL: VERSCHLÜSSELTE SICHERUNG ===================== -->
+<div id="backupModal" class="modal-overlay hidden">
+  <div class="modal">
+    <h3>Verschlüsselte Sicherung</h3>
+    <div id="backupModalMsg" class="msg"></div>
+    <form id="backupForm" autocomplete="off">
+      <label for="backupCode">Aktueller Code aus deiner Authenticator-App</label>
+      <input type="text" id="backupCode" inputmode="numeric" maxlength="7" placeholder="123456" required />
+      <label for="backupPw1">Passwort für die Sicherungsdatei</label>
+      <input type="password" id="backupPw1" minlength="12" placeholder="mind. 12 Zeichen" required autocomplete="new-password" />
+      <label for="backupPw2">Passwort wiederholen</label>
+      <input type="password" id="backupPw2" minlength="12" required autocomplete="new-password" />
+      <p style="font-size:12.5px; color:var(--ink-soft); margin:-6px 0 14px;">
+        Notiere das Passwort sicher (z. B. im Passwort-Manager des Vereins). Es wird nirgends gespeichert –
+        geht es verloren, ist die Sicherung unbrauchbar.
+      </p>
+      <div class="modal-actions">
+        <button type="button" class="ghost" id="backupAbbrechenBtn">Abbrechen</button>
+        <button type="submit" class="primary" id="backupStartBtn">Sicherung erstellen</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ===================== MODAL: SICHERUNG ENTSCHLÜSSELN ===================== -->
+<div id="backupOeffnenModal" class="modal-overlay hidden">
+  <div class="modal">
+    <h3>Sicherung entschlüsseln</h3>
+    <div id="backupOeffnenMsg" class="msg"></div>
+    <form id="backupOeffnenForm" autocomplete="off">
+      <label for="backupDatei">Sicherungsdatei (.vbak)</label>
+      <input type="file" id="backupDatei" accept=".vbak,application/json" required />
+      <label for="backupOeffnenPw">Passwort der Sicherung</label>
+      <input type="password" id="backupOeffnenPw" required autocomplete="off" />
+      <p style="font-size:12.5px; color:var(--ink-soft); margin:-6px 0 14px;">
+        Erzeugt eine unverschlüsselte JSON-Datei für die Wiederherstellung. Diese Datei enthält Bankdaten im Klartext –
+        bitte nach Gebrauch sofort löschen.
+      </p>
+      <div class="modal-actions">
+        <button type="button" class="ghost" id="backupOeffnenAbbrechenBtn">Abbrechen</button>
+        <button type="submit" class="primary" id="backupOeffnenStartBtn">Entschlüsseln</button>
       </div>
     </form>
   </div>
@@ -4094,6 +4145,7 @@
   const ROLLEN_LABEL = { vorsitzender: '1./2. Vorsitzende/r', kassenwart: 'Kassenwart/in', schriftfuehrer: 'Schriftführer/in', admin: 'Admin' };
 
   async function loadVerwaltung() {
+    if (typeof backupProtokollAnzeigen === 'function') backupProtokollAnzeigen();
     clearMsg(verwaltungMsg);
     verwaltungBody.innerHTML = '<tr><td colspan="5" style="color:#8a99a8; padding:24px 12px;">Lädt …</td></tr>';
 
@@ -6660,45 +6712,213 @@
     showMsg(dsgvoMsg, 'Fehler: ' + error.message, 'error');
   });
 
-  // ---- Vollsicherung aller Daten ----
-  backupBtn.addEventListener('click', async () => {
-    clearMsg(backupMsg);
-    backupBtn.disabled = true;
-    backupBtn.textContent = 'Sichert …';
+  // ---- Vollsicherung aller Daten (verschlüsselt, mit 2FA und Protokoll) ----
+  const BACKUP_TABELLEN = [
+    'organizations', 'mitglieder', 'haushalte', 'kita_kinder',
+    'beitragsordnung', 'mitglied_beitrag', 'sepa_mandate',
+    'buchungskategorien', 'zahlungen', 'foerderprojekte',
+    'veranstaltungen', 'veranstaltung_personen',
+    'protokolle', 'protokoll_punkte', 'aufgaben',
+    'dokumente', 'kommunikation_vorlagen', 'kommunikation_versand',
+    'aemter', 'profile',
+    'mitgliedsantraege', 'mitgliedsantrag_bank', 'audit_log', 'backup_protokoll',
+  ];
+  const BACKUP_SORTIERUNG = { mitgliedsantrag_bank: 'antrag_id' };
+  const BACKUP_ITERATIONEN = 600000;
 
-    const tabellen = [
-      'organizations', 'mitglieder', 'haushalte', 'kita_kinder',
-      'beitragsordnung', 'mitglied_beitrag', 'sepa_mandate',
-      'buchungskategorien', 'zahlungen', 'foerderprojekte',
-      'veranstaltungen', 'veranstaltung_personen',
-      'protokolle', 'protokoll_punkte', 'aufgaben',
-      'dokumente', 'kommunikation_vorlagen', 'kommunikation_versand',
-      'aemter', 'profile',
-    ];
+  const backupModal = document.getElementById('backupModal');
+  const backupModalMsg = document.getElementById('backupModalMsg');
+  const backupForm = document.getElementById('backupForm');
+  const backupStartBtn = document.getElementById('backupStartBtn');
+  const backupOeffnenModal = document.getElementById('backupOeffnenModal');
+  const backupOeffnenMsg = document.getElementById('backupOeffnenMsg');
+  const backupOeffnenForm = document.getElementById('backupOeffnenForm');
+  const backupOeffnenStartBtn = document.getElementById('backupOeffnenStartBtn');
 
-    const sicherung = { erstellt_am: new Date().toISOString(), daten: {} };
-    const fehler = [];
-
-    for (const t of tabellen) {
-      const { data, error } = await supabaseClient.from(t).select('*');
-      if (error) fehler.push(`${t}: ${error.message}`);
-      else sicherung.daten[t] = data;
+  // Supabase liefert pro Abfrage höchstens 1000 Zeilen – deshalb seitenweise laden
+  async function tabelleKomplettLaden(t) {
+    const seite = 1000;
+    const zeilen = [];
+    let sortiert = true;
+    for (let von = 0; ; von += seite) {
+      let q = supabaseClient.from(t).select('*').range(von, von + seite - 1);
+      if (sortiert) q = q.order(BACKUP_SORTIERUNG[t] || 'id');
+      let { data, error } = await q;
+      if (error && sortiert && error.code === '42703') {   // Tabelle ohne Spalte "id"
+        sortiert = false; von -= seite; continue;
+      }
+      if (error) throw error;
+      zeilen.push(...data);
+      if (data.length < seite) return zeilen;
     }
+  }
 
-    backupBtn.disabled = false;
-    backupBtn.textContent = 'Alle Daten als Datei sichern';
+  function bytesZuBase64(bytes) {
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    }
+    return btoa(bin);
+  }
+  function base64ZuBytes(b64) {
+    const bin = atob(b64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  async function schluesselAusPasswort(passwort, salt, iterationen) {
+    const basis = await crypto.subtle.importKey('raw', new TextEncoder().encode(passwort), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+      { name: 'PBKDF2', hash: 'SHA-256', salt, iterations: iterationen },
+      basis, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  }
 
-    const heute = new Date().toISOString().slice(0, 10);
-    dateiHerunterladen(JSON.stringify(sicherung, null, 2), `Vereinsdaten_Sicherung_${heute}.json`);
+  async function backupProtokollAnzeigen() {
+    const ziel = document.getElementById('backupProtokoll');
+    const { data, error } = await supabaseClient.from('backup_protokoll')
+      .select('erstellt_am, erstellt_von_name, datensaetze').order('erstellt_am', { ascending: false }).limit(5);
+    if (error || !data) { ziel.textContent = ''; return; }
+    if (!data.length) { ziel.textContent = 'Bisher wurde noch keine Sicherung erstellt.'; return; }
+    ziel.innerHTML = '<strong>Letzte Sicherungen:</strong><br>' + data.map(b =>
+      `${escapeHtml(new Date(b.erstellt_am).toLocaleString('de-DE'))} · ${escapeHtml(b.erstellt_von_name || 'unbekannt')} · ${Number(b.datensaetze)} Datensätze`
+    ).join('<br>');
+  }
 
-    if (fehler.length > 0) {
-      showMsg(backupMsg,
-        'Sicherung erstellt, aber einige Bereiche konnten nicht gelesen werden (fehlende Berechtigung): '
-        + fehler.join(' · '), 'info');
-    } else {
-      showMsg(backupMsg, 'Sicherung heruntergeladen. Bitte außerhalb der Software aufbewahren.', 'success');
+  backupBtn.addEventListener('click', () => {
+    clearMsg(backupMsg);
+    clearMsg(backupModalMsg);
+    backupForm.reset();
+    backupModal.classList.remove('hidden');
+    document.getElementById('backupCode').focus();
+    backupProtokollAnzeigen();
+  });
+  document.getElementById('backupAbbrechenBtn').addEventListener('click', () => {
+    backupForm.reset();
+    backupModal.classList.add('hidden');
+  });
+
+  backupForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearMsg(backupModalMsg);
+    const code = document.getElementById('backupCode').value.replace(/\s/g, '');
+    const pw1 = document.getElementById('backupPw1').value;
+    const pw2 = document.getElementById('backupPw2').value;
+
+    if (!/^[0-9]{6}$/.test(code)) return showMsg(backupModalMsg, 'Bitte den 6-stelligen Code aus der Authenticator-App eingeben.', 'error');
+    if (pw1.length < 12) return showMsg(backupModalMsg, 'Das Passwort muss mindestens 12 Zeichen haben.', 'error');
+    if (pw1 !== pw2) return showMsg(backupModalMsg, 'Die beiden Passwörter stimmen nicht überein.', 'error');
+
+    backupStartBtn.disabled = true;
+    const fertig = () => { backupStartBtn.disabled = false; backupStartBtn.textContent = 'Sicherung erstellen'; };
+
+    try {
+      // 1. Zwei-Faktor-Code erneut prüfen
+      backupStartBtn.textContent = 'Prüfe Code …';
+      const { data: faktoren } = await supabaseClient.auth.mfa.listFactors();
+      const faktor = (faktoren?.totp || []).find(f => f.status === 'verified');
+      if (!faktor) { fertig(); return showMsg(backupModalMsg, 'Für deinen Zugang ist keine Zwei-Faktor-Anmeldung eingerichtet.', 'error'); }
+      const { error: mfaFehler } = await supabaseClient.auth.mfa.challengeAndVerify({ factorId: faktor.id, code });
+      if (mfaFehler) { fertig(); return showMsg(backupModalMsg, 'Code ungültig oder abgelaufen. Bitte den aktuellen Code eingeben.', 'error'); }
+
+      // 2. Alle Tabellen vollständig laden
+      backupStartBtn.textContent = 'Lade Daten …';
+      const sicherung = { format: 'himmelsleiter-sicherung', version: 2, erstellt_am: new Date().toISOString(), daten: {} };
+      const fehler = [];
+      let anzahl = 0;
+      for (const t of BACKUP_TABELLEN) {
+        try {
+          sicherung.daten[t] = await tabelleKomplettLaden(t);
+          anzahl += sicherung.daten[t].length;
+        } catch (err) {
+          console.error('Sicherung', t, err);
+          fehler.push(t);
+        }
+      }
+
+      // 3. Sicherung protokollieren (ohne Protokoll keine Sicherung)
+      const { error: protFehler } = await supabaseClient.rpc('backup_protokollieren', {
+        p_tabellen: Object.keys(sicherung.daten), p_datensaetze: anzahl,
+      });
+      if (protFehler) {
+        console.error('Backup-Protokoll', protFehler);
+        fertig();
+        return showMsg(backupModalMsg, 'Die Sicherung konnte nicht protokolliert werden und wurde deshalb nicht erstellt. Ist „backup_protokoll.sql“ ausgeführt?', 'error');
+      }
+
+      // 4. Verschlüsseln (AES-256-GCM, Schlüssel per PBKDF2 aus dem Passwort)
+      backupStartBtn.textContent = 'Verschlüssele …';
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const schluessel = await schluesselAusPasswort(pw1, salt, BACKUP_ITERATIONEN);
+      const klartext = new TextEncoder().encode(JSON.stringify(sicherung));
+      const geheim = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, schluessel, klartext));
+
+      const datei = {
+        format: 'himmelsleiter-sicherung-verschluesselt', version: 1,
+        erstellt_am: sicherung.erstellt_am,
+        hinweis: 'Verschlüsselte Sicherung der Vereinsverwaltung. Öffnen über Verwaltung → Sicherung entschlüsseln.',
+        kdf: { name: 'PBKDF2', hash: 'SHA-256', iterationen: BACKUP_ITERATIONEN, salt: bytesZuBase64(salt) },
+        verschluesselung: { name: 'AES-GCM', laenge: 256, iv: bytesZuBase64(iv) },
+        daten: bytesZuBase64(geheim),
+      };
+      const heute = new Date().toISOString().slice(0, 10);
+      dateiHerunterladen(JSON.stringify(datei), `Vereinsdaten_Sicherung_${heute}.vbak`, 'application/octet-stream');
+
+      fertig();
+      backupForm.reset();
+      backupModal.classList.add('hidden');
+      backupProtokollAnzeigen();
+      if (fehler.length) {
+        showMsg(backupMsg, `Sicherung erstellt (${anzahl} Datensätze), aber diese Bereiche fehlen: ${fehler.join(', ')}.`, 'info');
+      } else {
+        showMsg(backupMsg, `Verschlüsselte Sicherung mit ${anzahl} Datensätzen heruntergeladen. Datei und Passwort getrennt aufbewahren.`, 'success');
+      }
+    } catch (err) {
+      console.error('Sicherung fehlgeschlagen', err);
+      fertig();
+      showMsg(backupModalMsg, 'Die Sicherung ist fehlgeschlagen. Bitte noch einmal versuchen.', 'error');
     }
   });
+
+  // ---- Sicherung entschlüsseln (für die Wiederherstellung) ----
+  document.getElementById('backupOeffnenBtn').addEventListener('click', () => {
+    clearMsg(backupOeffnenMsg);
+    backupOeffnenForm.reset();
+    backupOeffnenModal.classList.remove('hidden');
+  });
+  document.getElementById('backupOeffnenAbbrechenBtn').addEventListener('click', () => {
+    backupOeffnenForm.reset();
+    backupOeffnenModal.classList.add('hidden');
+  });
+  backupOeffnenForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearMsg(backupOeffnenMsg);
+    const datei = document.getElementById('backupDatei').files[0];
+    const passwort = document.getElementById('backupOeffnenPw').value;
+    if (!datei || !passwort) return;
+    backupOeffnenStartBtn.disabled = true;
+    backupOeffnenStartBtn.textContent = 'Entschlüssele …';
+    try {
+      const inhalt = JSON.parse(await datei.text());
+      if (inhalt.format !== 'himmelsleiter-sicherung-verschluesselt') throw new Error('format');
+      const schluessel = await schluesselAusPasswort(passwort, base64ZuBytes(inhalt.kdf.salt), inhalt.kdf.iterationen);
+      const klar = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: base64ZuBytes(inhalt.verschluesselung.iv) }, schluessel, base64ZuBytes(inhalt.daten));
+      const name = datei.name.replace(/\.vbak$/i, '') + '_ENTSCHLUESSELT.json';
+      dateiHerunterladen(new TextDecoder().decode(klar), name, 'application/json');
+      backupOeffnenForm.reset();
+      backupOeffnenModal.classList.add('hidden');
+      showMsg(backupMsg, 'Sicherung entschlüsselt. Die JSON-Datei enthält Bankdaten im Klartext – nach Gebrauch löschen.', 'info');
+    } catch (err) {
+      showMsg(backupOeffnenMsg, err.message === 'format'
+        ? 'Das ist keine verschlüsselte Sicherung dieser Vereinsverwaltung.'
+        : 'Entschlüsseln fehlgeschlagen – Passwort falsch oder Datei beschädigt.', 'error');
+    } finally {
+      backupOeffnenStartBtn.disabled = false;
+      backupOeffnenStartBtn.textContent = 'Entschlüsseln';
+    }
+  });
+
   // =====================================================
   // BANKVERBINDUNG / SEPA-MANDAT
   // =====================================================
