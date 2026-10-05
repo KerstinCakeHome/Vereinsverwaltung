@@ -944,9 +944,11 @@
             <option value="alle">alle Buchungen</option>
             <option value="einnahme">nur Einnahmen</option>
             <option value="ausgabe">nur Ausgaben</option>
+            <option value="offen">nur zu prüfen</option>
           </select>
           <button class="ghost" id="kbSpendenQrBtn">Spenden-QR-Code</button>
           <button class="ghost" id="kbKategorienBtn">Kategorien</button>
+          <button class="ghost" id="kbImportBtn">⬇ Kontoauszug importieren</button>
           <button class="primary" id="newBuchungBtn">+ Buchung</button>
         </div>
       </div>
@@ -2184,6 +2186,56 @@
   </div>
 </div>
 
+
+<!-- ===================== MODAL: KONTOAUSZUG IMPORTIEREN ===================== -->
+<div id="bankImportModal" class="modal-overlay hidden">
+  <div class="modal akte-breit" style="max-width:1080px;">
+    <h3>Kontoauszug importieren</h3>
+    <div id="biMsg" class="msg"></div>
+
+    <div id="biSchritt1">
+      <p style="font-size:13.5px; color:var(--ink-soft); margin:-8px 0 14px;">
+        Den <strong>Kontoauszug als PDF</strong> aus dem Online-Banking (Postfach) auswählen – oder, falls angeboten,
+        die Umsätze als <strong>CAMT</strong> (.xml/.zip) bzw. <strong>CSV</strong>. Bleibt bitte bei einem Format,
+        damit doppelte Buchungen sicher erkannt werden. Bereits importierte Buchungen werden übersprungen.
+      </p>
+      <label for="biDatei">Datei vom Bankkonto</label>
+      <input type="file" id="biDatei" accept=".pdf,.xml,.zip,.csv,.txt" />
+      <div id="biSaldoEingabe" class="hidden">
+        <label for="biSaldo">Kontostand laut Bank nach der letzten Buchung in der Datei (für den Abgleich)</label>
+        <input type="text" id="biSaldo" placeholder="z. B. 1.234,56" />
+        <p style="font-size:12.5px; color:var(--ink-soft); margin:-8px 0 14px;">
+          CSV-Dateien enthalten keinen Kontostand. Trag ihn hier ein, dann kann die Software prüfen, ob alles stimmt.
+        </p>
+      </div>
+    </div>
+
+    <div id="biVorschau" class="hidden">
+      <div id="biInfo" style="font-size:13.5px; margin-bottom:12px;"></div>
+      <div style="max-height:52vh; overflow:auto; border:1px solid #e5edf3; border-radius:10px;">
+        <table style="font-size:13px;">
+          <thead style="position:sticky; top:0; background:#fff; z-index:1;">
+            <tr>
+              <th style="width:24px;"></th>
+              <th>Datum</th>
+              <th>Auftraggeber / Empfänger · Verwendungszweck</th>
+              <th style="text-align:right;">Betrag</th>
+              <th style="min-width:170px;">Kategorie</th>
+              <th style="min-width:170px;">Mitglied</th>
+            </tr>
+          </thead>
+          <tbody id="biTabelle"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="modal-actions" style="margin-top:16px;">
+      <button type="button" class="ghost" id="biAbbrechenBtn">Abbrechen</button>
+      <button type="button" class="primary hidden" id="biUebernehmenBtn">Buchungen übernehmen</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===================== MODAL: KATEGORIEN ===================== -->
 <div id="kategorienModal" class="modal-overlay hidden">
   <div class="modal">
@@ -2761,6 +2813,7 @@
   const closeKategorienBtn = document.getElementById('closeKategorienBtn');
   let alleKategorien = [];
   let alleBuchungen = [];
+  let bankKonten = [];
 
   const tabSerienbrief = document.getElementById('tabSerienbrief');
   const panelSerienbrief = document.getElementById('panelSerienbrief');
@@ -3132,6 +3185,7 @@
     // Kassenbuch: Vorsitz darf nur lesen, also keine Buchungen/Kategorien anlegen
     newBuchungBtn.classList.toggle('hidden', !darfFinanzenBearbeiten);
     kbKategorienBtn.classList.toggle('hidden', !darfFinanzenBearbeiten);
+    document.getElementById('kbImportBtn').classList.toggle('hidden', !darfFinanzenBearbeiten);
 
     // Protokolle: lesen dürfen alle, anlegen nur Schriftführung, Vorsitz und Admin
     newProtokollBtn.classList.toggle('hidden',
@@ -4472,19 +4526,24 @@
     clearMsg(kbMsg);
     kassenbuchBody.innerHTML = '<tr><td colspan="5" style="color:#8a99a8; padding:24px 12px;">Lädt …</td></tr>';
 
-    const [katRes, buchRes] = await Promise.all([
-      supabaseClient.from('buchungskategorien').select('*').order('art').order('sortierung'),
-      supabaseClient.from('zahlungen').select('*').order('datum', { ascending: false }),
-    ]);
+    const katRes = await supabaseClient.from('buchungskategorien').select('*').order('art').order('sortierung');
+    let buchungen;
+    try {
+      buchungen = await tabelleKomplettLaden('zahlungen');      // auch mehr als 1000 Buchungen
+    } catch (err) {
+      buchungen = null;
+    }
 
-    if (katRes.error || buchRes.error) {
+    if (katRes.error || !buchungen) {
       kassenbuchBody.innerHTML = '';
-      showMsg(kbMsg, 'Fehler beim Laden: ' + (katRes.error?.message || buchRes.error?.message), 'error');
+      showMsg(kbMsg, 'Das Kassenbuch konnte nicht geladen werden. Bitte die Seite neu laden.', 'error');
       return;
     }
 
     alleKategorien = katRes.data || [];
-    alleBuchungen = buchRes.data || [];
+    alleBuchungen = buchungen.sort((a, b) => (b.datum || '').localeCompare(a.datum || ''));
+    const kontoRes = await supabaseClient.from('bank_konto').select('*');
+    bankKonten = kontoRes.error ? [] : (kontoRes.data || []);
 
     jahrFilterBefuellen();
     renderKassenbuch();
@@ -4495,6 +4554,7 @@
     const art = kbArtFilter.value;
     return alleBuchungen.filter(b => {
       if (jahr !== 'alle' && (!b.datum || b.datum.slice(0, 4) !== jahr)) return false;
+      if (art === 'offen') return b.quelle === 'fints_import' && !b.kategorie_id;
       if (art !== 'alle' && b.art !== art) return false;
       return true;
     });
@@ -4528,7 +4588,26 @@
         <div class="kb-label">Saldo ${zeitraum}</div>
         <div class="kb-value">${formatBetrag(saldo)}</div>
       </div>
-    `;
+    ` + bankKonten.map(k => {
+      const stand = Math.round((Number(k.startsaldo) + alleBuchungen
+        .filter(b => b.bank_konto_id === k.id && b.datum >= k.startdatum)
+        .reduce((s2, b) => s2 + (b.art === 'einnahme' ? 1 : -1) * Number(b.betrag), 0)) * 100) / 100;
+      let abgleich = '';
+      if (k.bank_saldo !== null && k.bank_saldo !== undefined) {
+        const diff = Math.round((stand - Number(k.bank_saldo)) * 100) / 100;
+        abgleich = diff === 0
+          ? `<div style="font-size:12px; margin-top:6px; color:var(--accent-dark);">✓ stimmt mit der Bank überein (${formatDatum(k.bank_saldo_datum)})</div>`
+          : `<div style="font-size:12px; margin-top:6px; color:var(--orange); font-weight:600;">⚠ Bank am ${formatDatum(k.bank_saldo_datum)}: ${formatBetrag(k.bank_saldo)} – Abweichung ${formatBetrag(diff)}</div>`;
+      }
+      const offen = alleBuchungen.filter(b => b.bank_konto_id === k.id && !b.kategorie_id).length;
+      return `
+      <div class="kb-stat">
+        <div class="kb-label">Kontostand ${escapeHtml(k.bezeichnung || 'Bankkonto')}</div>
+        <div class="kb-value">${formatBetrag(stand)}</div>
+        ${abgleich}
+        ${offen ? `<div style="font-size:12px; margin-top:4px; color:var(--ink-soft);">${offen} Buchung${offen === 1 ? '' : 'en'} noch zu prüfen</div>` : ''}
+      </div>`;
+    }).join('');
 
     kassenbuchCount.textContent = liste.length + (liste.length === 1 ? ' Buchung' : ' Buchungen');
     kassenbuchBody.innerHTML = '';
@@ -4548,8 +4627,8 @@
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${formatDatum(b.datum)}</td>
-        <td>${escapeHtml(kat ? kat.name : '–')}</td>
-        <td>${escapeHtml(b.verwendungszweck || '–')}</td>
+        <td>${kat ? escapeHtml(kat.name) : (b.quelle === 'fints_import' ? '<span style="color:var(--orange); font-weight:600;">zu prüfen</span>' : '–')}</td>
+        <td>${b.gegenpartei ? `<strong>${escapeHtml(b.gegenpartei)}</strong><br>` : ''}${escapeHtml(b.verwendungszweck || (b.gegenpartei ? '' : '–'))}</td>
         <td class="betrag-zelle"><span class="${klasse}">${vorzeichen} ${formatBetrag(b.betrag)}</span></td>
         <td>${darfBearbeiten ? `<button class="text-link" data-edit-buchung="${b.id}">Bearbeiten</button>` : ''}</td>
       `;
@@ -4563,6 +4642,595 @@
 
   kbJahrFilter.addEventListener('change', renderKassenbuch);
   kbArtFilter.addEventListener('change', renderKassenbuch);
+
+  // =====================================================
+  // KONTOAUSZUG-IMPORT (CAMT .xml/.zip oder CSV)
+  // Liest die Umsatzdatei der Bank, erkennt Doppelte, ordnet Mitglieder und
+  // Kategorien zu und prüft den Kontostand gegen den Saldo der Bank.
+  // =====================================================
+  const biModal = document.getElementById('bankImportModal');
+  const biMsg = document.getElementById('biMsg');
+  const biDatei = document.getElementById('biDatei');
+  const biSaldoEingabe = document.getElementById('biSaldoEingabe');
+  const biSaldo = document.getElementById('biSaldo');
+  const biVorschau = document.getElementById('biVorschau');
+  const biInfo = document.getElementById('biInfo');
+  const biTabelle = document.getElementById('biTabelle');
+  const biUebernehmenBtn = document.getElementById('biUebernehmenBtn');
+  let biDaten = null;
+
+  const biNorm = (s) => String(s || '').toLowerCase()
+    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+    .replace(/[^a-z0-9]+/g, ' ').trim();
+  const biIban = (s) => String(s || '').replace(/\s+/g, '').toUpperCase();
+  const biRund = (x) => Math.round(x * 100) / 100;
+
+  async function biHash(text) {
+    const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 40);
+  }
+
+  function biDekodieren(bytes) {
+    let t;
+    try { t = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
+    catch (_) { t = new TextDecoder('windows-1252').decode(bytes); }
+    return t.replace(/^﻿/, '');
+  }
+
+  // ---- ZIP entpacken (Sparkasse liefert CAMT oft als ZIP mit mehreren XML-Dateien) ----
+  async function biZipEntpacken(bytes) {
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let eocd = -1;
+    for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) {
+      if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    }
+    if (eocd < 0) throw new Error('Die ZIP-Datei ist beschädigt.');
+    const anzahl = dv.getUint16(eocd + 10, true);
+    let p = dv.getUint32(eocd + 16, true);
+    const dateien = [];
+    for (let n = 0; n < anzahl; n++) {
+      if (dv.getUint32(p, true) !== 0x02014b50) break;
+      const methode = dv.getUint16(p + 10, true);
+      const groesse = dv.getUint32(p + 20, true);
+      const nameLen = dv.getUint16(p + 28, true), extraLen = dv.getUint16(p + 30, true), kommLen = dv.getUint16(p + 32, true);
+      const lokal = dv.getUint32(p + 42, true);
+      const name = new TextDecoder().decode(bytes.subarray(p + 46, p + 46 + nameLen));
+      p += 46 + nameLen + extraLen + kommLen;
+      if (!/\.xml$/i.test(name)) continue;
+      const start = lokal + 30 + dv.getUint16(lokal + 26, true) + dv.getUint16(lokal + 28, true);
+      const roh = bytes.subarray(start, start + groesse);
+      let inhalt;
+      if (methode === 0) inhalt = roh;
+      else if (methode === 8) {
+        const strom = new Blob([roh]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+        inhalt = new Uint8Array(await new Response(strom).arrayBuffer());
+      } else continue;
+      dateien.push({ name, text: biDekodieren(inhalt) });
+    }
+    if (!dateien.length) throw new Error('In der ZIP-Datei wurde keine CAMT-Datei (.xml) gefunden.');
+    return dateien.sort((a, b) => a.name.localeCompare(b.name)).map(d => d.text);
+  }
+
+  // ---- CAMT (camt.052 / camt.053) ----
+  function biCamtLesen(texte) {
+    const kind = (el, ...pfad) => { let e = el; for (const n of pfad) e = e && [...e.children].find(c => c.localName === n); return e || null; };
+    const txt = (el, ...pfad) => (kind(el, ...pfad)?.textContent || '').trim();
+    const kinder = (el, name) => el ? [...el.children].filter(c => c.localName === name) : [];
+    const zahl = (s) => Number(String(s).replace(',', '.'));
+    const tag = (el, n) => txt(el, n, 'Dt') || txt(el, n, 'DtTm').slice(0, 10);
+
+    const zeilen = [], auszuege = [];
+    for (const t of texte) {
+      const doc = new DOMParser().parseFromString(t, 'application/xml');
+      if (doc.getElementsByTagName('parsererror').length) throw new Error('Die CAMT-Datei konnte nicht gelesen werden.');
+      const stmts = [...doc.getElementsByTagNameNS('*', 'Stmt'), ...doc.getElementsByTagNameNS('*', 'Rpt')];
+      for (const st of stmts) {
+        const iban = biIban(txt(st, 'Acct', 'Id', 'IBAN'));
+        let anfang = null, anfangDatum = null, ende = null, endeDatum = null;
+        for (const b of kinder(st, 'Bal')) {
+          const code = txt(b, 'Tp', 'CdOrPrtry', 'Cd');
+          const betrag = zahl(txt(b, 'Amt')) * (txt(b, 'CdtDbtInd') === 'DBIT' ? -1 : 1);
+          const d = tag(b, 'Dt');
+          if ((code === 'OPBD' || code === 'PRCD') && anfang === null) { anfang = betrag; anfangDatum = d; }
+          if (code === 'CLBD') { ende = betrag; endeDatum = d; }
+        }
+        let summe = 0, anzahl = 0;
+        const stZeilen = [];
+        for (const n of kinder(st, 'Ntry')) {
+          const sts = txt(n, 'Sts', 'Cd') || txt(n, 'Sts');
+          if (sts && sts !== 'BOOK') continue;                 // vorgemerkte Umsätze überspringen
+          const art = txt(n, 'CdtDbtInd') === 'DBIT' ? 'ausgabe' : 'einnahme';
+          const betrag = zahl(txt(n, 'Amt'));
+          const datum = tag(n, 'BookgDt') || tag(n, 'ValDt');
+          const ref = txt(n, 'AcctSvcrRef');
+          const buchungstext = txt(n, 'AddtlNtryInf');
+          summe += art === 'einnahme' ? betrag : -betrag; anzahl++;
+
+          const gegen = art === 'einnahme' ? 'Dbtr' : 'Cdtr';
+          const info = (tx) => {
+            const ustrd = kinder(kind(tx, 'RmtInf'), 'Ustrd').map(e => e.textContent.trim()).join(' ');
+            const e2e = txt(tx, 'Refs', 'EndToEndId');
+            return {
+              name: txt(tx, 'RltdPties', gegen, 'Nm') || txt(tx, 'RltdPties', gegen, 'Pty', 'Nm'),
+              iban: biIban(txt(tx, 'RltdPties', gegen + 'Acct', 'Id', 'IBAN')),
+              zweck: ustrd,
+              mandat: txt(tx, 'Refs', 'MndtId'),
+              e2e: e2e === 'NOTPROVIDED' ? '' : e2e,
+              betrag: zahl(txt(tx, 'AmtDtls', 'TxAmt', 'Amt') || txt(tx, 'Amt') || 'NaN'),
+            };
+          };
+          const txs = [...n.getElementsByTagNameNS('*', 'TxDtls')].map(info);
+          const teilbar = txs.length > 1 && txs.every(x => !isNaN(x.betrag))
+            && Math.abs(txs.reduce((s, x) => s + x.betrag, 0) - betrag) < 0.005;
+          const basis = { art, datum, buchungstext, iban_konto: iban };
+          if (teilbar) {
+            txs.forEach((x, i) => stZeilen.push({ ...basis, ...x, betrag: x.betrag, schluessel: `camt|${iban}|${ref || datum + '|' + betrag + '|' + buchungstext}|${i}` }));
+          } else {
+            const x = txs[0] || { name: '', iban: '', zweck: '', mandat: '', e2e: '' };
+            stZeilen.push({ ...basis, ...x, betrag, schluessel: `camt|${iban}|${ref || [datum, art, betrag, x.name, x.zweck, x.e2e].join('|')}` });
+          }
+        }
+        zeilen.push(...stZeilen);
+        const datums = stZeilen.map(z => z.datum).filter(Boolean).sort();
+        auszuege.push({
+          iban, anfang, anfangDatum, ende, endeDatum, anzahl,
+          von: txt(st, 'FrToDt', 'FrDtTm').slice(0, 10) || datums[0] || anfangDatum,
+          bis: txt(st, 'FrToDt', 'ToDtTm').slice(0, 10) || datums[datums.length - 1] || endeDatum,
+          ok: anfang !== null && ende !== null ? Math.abs(biRund(anfang + summe) - ende) < 0.005 : null,
+        });
+      }
+    }
+    // Gleiche Buchung in mehreren Auszügen (z. B. Tages- und Monatsauszug) nur einmal
+    const gesehen = new Set();
+    const eindeutig = zeilen.filter(z => !gesehen.has(z.schluessel) && gesehen.add(z.schluessel));
+    return { format: 'camt', iban: auszuege.find(a => a.iban)?.iban || '', zeilen: eindeutig, auszuege };
+  }
+
+  // ---- CSV (Sparkasse „CSV-CAMT“ und andere Banken) ----
+  function biCsvZeilen(text) {
+    const erste = text.split(/\r?\n/)[0] || '';
+    const trenner = (erste.match(/;/g) || []).length >= (erste.match(/,/g) || []).length ? ';' : ',';
+    const zeilen = []; let feld = '', zeile = [], inQ = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (inQ) {
+        if (c === '"') { if (text[i + 1] === '"') { feld += '"'; i++; } else inQ = false; }
+        else feld += c;
+      } else if (c === '"') inQ = true;
+      else if (c === trenner) { zeile.push(feld); feld = ''; }
+      else if (c === '\n' || c === '\r') {
+        if (c === '\r' && text[i + 1] === '\n') i++;
+        zeile.push(feld); feld = '';
+        if (zeile.some(f => f.trim() !== '')) zeilen.push(zeile);
+        zeile = [];
+      } else feld += c;
+    }
+    zeile.push(feld);
+    if (zeile.some(f => f.trim() !== '')) zeilen.push(zeile);
+    return zeilen;
+  }
+
+  function biDatum(s) {
+    s = String(s || '').trim();
+    let m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/);
+    if (m) {
+      const j = m[3].length === 2 ? '20' + m[3] : m[3];
+      return `${j}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+    }
+    m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+  }
+
+  function biBetrag(s) {
+    s = String(s || '').replace(/[^\d,.\-+]/g, '');
+    if (/,\d{1,2}$/.test(s)) s = s.replace(/\./g, '').replace(',', '.');
+    else s = s.replace(/,/g, '');
+    return Number(s);
+  }
+
+  async function biCsvLesen(text) {
+    const zeilen = biCsvZeilen(text);
+    const kopfIdx = zeilen.findIndex(z => z.some(f => /betrag/i.test(f)) && z.some(f => /(buchungstag|buchungsdatum|datum)/i.test(f)));
+    if (kopfIdx < 0) throw new Error('Die Spalten der CSV-Datei wurden nicht erkannt. Bitte die Umsätze im Format „CSV-CAMT“ oder als CAMT exportieren.');
+    const kopf = zeilen[kopfIdx].map(f => biNorm(f).replace(/ /g, ''));
+    const spalte = (...namen) => {
+      for (const n of namen) { const i = kopf.findIndex(k => k === n); if (i >= 0) return i; }
+      for (const n of namen) { const i = kopf.findIndex(k => k.includes(n)); if (i >= 0) return i; }
+      return -1;
+    };
+    const s = {
+      datum: spalte('buchungstag', 'buchungsdatum', 'datum'),
+      betrag: spalte('betrag', 'betrageur', 'umsatz'),
+      name: spalte('beguenstigterzahlungspflichtiger', 'namezahlungsbeteiligter', 'zahlungsbeteiligter', 'empfaenger', 'auftraggeber', 'name'),
+      iban: spalte('ibanzahlungsbeteiligter', 'kontonummeriban'),
+      konto: spalte('auftragskonto', 'ibanauftragskonto'),
+      zweck: spalte('verwendungszweck'),
+      text: spalte('buchungstext'),
+      mandat: spalte('mandatsreferenz'),
+      e2e: spalte('kundenreferenzendtoend', 'kundenreferenz'),
+      info: spalte('info'),
+      saldo: spalte('saldonachbuchung', 'saldo'),
+      soll: spalte('soll'), haben: spalte('haben'),
+    };
+    if (s.datum < 0 || s.betrag < 0) throw new Error('Datum oder Betrag wurden in der CSV-Datei nicht gefunden.');
+
+    const ergebnis = []; const zaehler = {};
+    let vorgemerkt = 0, saldoBank = null, saldoDatum = null, kontoIban = '';
+    for (const z of zeilen.slice(kopfIdx + 1)) {
+      const wert = (i) => (i >= 0 ? (z[i] || '').trim() : '');
+      const datum = biDatum(wert(s.datum));
+      const betragRoh = biBetrag(wert(s.betrag));
+      if (!datum || isNaN(betragRoh) || betragRoh === 0) continue;
+      if (/vorgemerkt/i.test(wert(s.info))) { vorgemerkt++; continue; }
+      kontoIban = kontoIban || biIban(wert(s.konto));
+      const roh = z.join('|');
+      zaehler[roh] = (zaehler[roh] || 0) + 1;                 // identische Zeilen unterscheiden
+      ergebnis.push({
+        art: betragRoh < 0 ? 'ausgabe' : 'einnahme',
+        betrag: Math.abs(betragRoh), datum,
+        name: wert(s.name), iban: biIban(wert(s.iban)), zweck: wert(s.zweck),
+        buchungstext: wert(s.text), mandat: wert(s.mandat),
+        e2e: /notprovided/i.test(wert(s.e2e)) ? '' : wert(s.e2e),
+        schluessel: `csv|${roh}|${zaehler[roh]}`,
+      });
+      if (s.saldo >= 0 && wert(s.saldo) && (!saldoDatum || datum >= saldoDatum)) {
+        saldoBank = biBetrag(wert(s.saldo)); saldoDatum = datum;
+      }
+    }
+    return { format: 'csv', iban: kontoIban, zeilen: ergebnis, auszuege: [], vorgemerkt, saldoBank, saldoDatum };
+  }
+
+  // ---- PDF-Kontoauszug (Sparkasse-Layout: Datum · Erläuterung · Betrag) ----
+  let biPdfjs = null;
+  async function biPdfLaden() {
+    if (!biPdfjs) {
+      biPdfjs = await import(new URL('lib/pdfjs-6.4.299/pdf.min.mjs', location.href).href);
+      biPdfjs.GlobalWorkerOptions.workerSrc = new URL('lib/pdfjs-6.4.299/pdf.worker.min.mjs', location.href).href;
+    }
+    return biPdfjs;
+  }
+
+  async function biPdfZeilen(bytes) {
+    const pdfjs = await biPdfLaden();
+    const pdf = await pdfjs.getDocument({ data: bytes, isEvalSupported: false, disableFontFace: true }).promise;
+    const zeilen = [];
+    for (let s = 1; s <= pdf.numPages; s++) {
+      const seite = await pdf.getPage(s);
+      const inhalt = await seite.getTextContent();
+      const proY = new Map();
+      for (const it of inhalt.items) {
+        if (!it.str || !it.str.trim()) continue;
+        const y = Math.round(it.transform[5] / 2) * 2;              // gleiche Zeile trotz kleiner Abweichungen
+        if (!proY.has(y)) proY.set(y, []);
+        proY.get(y).push({ x: it.transform[4], t: it.str });
+      }
+      [...proY.entries()].sort((a, b) => b[0] - a[0]).forEach(([, teile]) => {
+        teile.sort((a, b) => a.x - b.x);
+        zeilen.push({ x: teile[0].x, text: teile.map(t => t.t).join(' ').replace(/\s+/g, ' ').trim() });
+      });
+    }
+    return zeilen;
+  }
+
+  async function biPdfLesen(bytes) {
+    const zeilen = await biPdfZeilen(bytes);
+    const alles = zeilen.map(z => z.text).join('\n');
+    const ibanTreffer = alles.match(/\bDE\d{2}(?: ?\d{4}){4} ?\d{2}\b/);
+    const iban = ibanTreffer ? biIban(ibanTreffer[0]) : '';
+
+    const buchungRe = /^(\d{2}\.\d{2}\.\d{4})\s+(.+?)\s+(-?[\d.]+,\d{2})$/;
+    const saldoRe = /Kontostand am (\d{2}\.\d{2}\.\d{4})\D.*?\s(-?[\d.]+,\d{2})$/;
+    let anfang = null, anfangDatum = null, ende = null, endeDatum = null;
+    let datumX = null, aktuell = null;
+    const ergebnis = [];
+    const abschliessen = () => { if (aktuell) { ergebnis.push(aktuell); aktuell = null; } };
+
+    for (const z of zeilen) {
+      const saldo = z.text.match(saldoRe);
+      if (saldo) {
+        abschliessen();
+        if (anfang === null && !ergebnis.length) { anfang = biBetrag(saldo[2]); anfangDatum = biDatum(saldo[1]); }
+        else { ende = biBetrag(saldo[2]); endeDatum = biDatum(saldo[1]); break; }   // Ende des Auszugs
+        continue;
+      }
+      const b = z.text.match(buchungRe);
+      if (b) {
+        abschliessen();
+        datumX = datumX ?? z.x;
+        const betrag = biBetrag(b[3]);
+        aktuell = { datum: biDatum(b[1]), art: betrag < 0 ? 'ausgabe' : 'einnahme', betrag: Math.abs(betrag),
+                    buchungstext: b[2].trim(), name: '', iban: '', zweck: '', mandat: '', e2e: '' };
+        continue;
+      }
+      // Folgezeilen sind eingerückt; alles links davon (Fußzeile, Seitenkopf) beendet die Buchung
+      if (aktuell && datumX !== null && z.x > datumX + 20 && !/^Seite \d+ von \d+/.test(z.text)) {
+        aktuell.zweck = (aktuell.zweck ? aktuell.zweck + ' ' : '') + z.text;
+      } else {
+        abschliessen();
+      }
+    }
+    abschliessen();
+
+    const zaehler = {};
+    for (const e of ergebnis) {
+      const gl = e.zweck.match(/Gläubiger-ID:\s*(\S+)/);
+      if (gl) e.zweck = e.zweck.replace(gl[0], '').trim();
+      const roh = [iban, e.datum, e.art, e.betrag, e.buchungstext, e.zweck].join('|');
+      zaehler[roh] = (zaehler[roh] || 0) + 1;
+      e.schluessel = `pdf|${roh}|${zaehler[roh]}`;
+    }
+    const summe = ergebnis.reduce((s, e) => s + (e.art === 'einnahme' ? e.betrag : -e.betrag), 0);
+    const datums = ergebnis.map(e => e.datum).sort();
+    return {
+      format: 'pdf', iban, zeilen: ergebnis,
+      auszuege: [{
+        iban, anfang, anfangDatum, ende, endeDatum, anzahl: ergebnis.length,
+        von: datums[0] || endeDatum, bis: endeDatum || datums[datums.length - 1],
+        ok: anfang !== null && ende !== null ? Math.abs(biRund(anfang + summe) - ende) < 0.005 : null,
+      }],
+    };
+  }
+
+  // ---- Zuordnung: Mitglied und Kategorie vorschlagen ----
+  async function biZuordnen(daten) {
+    const { data: mandate } = await supabaseClient.from('sepa_mandate').select('mitglied_id, iban, mandatsreferenz');
+    const proIban = {}, proMandat = {}, proName = {};
+    (mandate || []).forEach(m => {
+      if (m.iban) proIban[biIban(m.iban)] = m.mitglied_id;
+      if (m.mandatsreferenz) proMandat[m.mandatsreferenz.trim().toUpperCase()] = m.mitglied_id;
+    });
+    const schluessel = (name) => biNorm(name).split(' ').filter(Boolean).sort().join(' ');
+    allMembers.forEach(m => {
+      const k = schluessel(`${m.vorname} ${m.nachname}`);
+      proName[k] = proName[k] === undefined ? m.id : null;     // null = nicht eindeutig
+    });
+    const kat = (name, art) => alleKategorien.find(k => k.aktiv && k.art === art && biNorm(k.name) === biNorm(name))?.id || '';
+
+    for (const z of daten.zeilen) {
+      z.mitgliedId = proMandat[(z.mandat || '').toUpperCase()] || proIban[z.iban] || proName[schluessel(z.name)] || '';
+      if (!z.mitgliedId && !z.name) {
+        // PDF-Auszug: kein eigenes Namensfeld -> Mitglied, dessen Vor- und Nachname im Text vorkommt (nur eindeutig)
+        const text = ' ' + biNorm(z.zweck) + ' ';
+        const treffer = allMembers.filter(m => m.vorname && m.nachname
+          && text.includes(' ' + biNorm(m.vorname) + ' ') && text.includes(' ' + biNorm(m.nachname) + ' '));
+        if (treffer.length === 1) z.mitgliedId = treffer[0].id;
+      }
+      const t = biNorm(`${z.buchungstext} ${z.zweck} ${z.name}`);
+      z.hinweis = '';
+      if (/rueckla?stschrift|ruecklast|retoure/.test(t)) {
+        z.katId = ''; z.hinweis = 'Rücklastschrift – bitte prüfen';
+      } else if (z.art === 'ausgabe' && /(entgelt|gebuehr|kontofuehr|abschluss|rechnungsabschluss|zinsen|porto)/.test(t) && (!z.name || /sparkasse|bank/.test(biNorm(z.name)))) {
+        z.katId = kat('Bankkosten', 'ausgabe');
+      } else if (z.art === 'einnahme' && /spende/.test(t)) {
+        z.katId = kat('Spenden', 'einnahme');
+      } else if (z.art === 'einnahme' && (z.mitgliedId || /beitrag|mitglied/.test(t) || (z.mandat && /lastschrift/.test(t)))) {
+        z.katId = kat('Mitgliedsbeiträge', 'einnahme');
+      } else if (z.art === 'ausgabe' && /versicherung/.test(t)) {
+        z.katId = kat('Versicherungen', 'ausgabe');
+      } else {
+        z.katId = '';
+      }
+    }
+  }
+
+  // ---- Datei einlesen ----
+  document.getElementById('kbImportBtn').addEventListener('click', () => {
+    biDaten = null;
+    biDatei.value = ''; biSaldo.value = '';
+    clearMsg(biMsg);
+    biSaldoEingabe.classList.add('hidden');
+    biVorschau.classList.add('hidden');
+    biUebernehmenBtn.classList.add('hidden');
+    biModal.classList.remove('hidden');
+  });
+  document.getElementById('biAbbrechenBtn').addEventListener('click', () => biModal.classList.add('hidden'));
+
+  biDatei.addEventListener('change', async () => {
+    clearMsg(biMsg);
+    biVorschau.classList.add('hidden');
+    biUebernehmenBtn.classList.add('hidden');
+    const datei = biDatei.files[0];
+    if (!datei) return;
+    if (datei.size > 20 * 1024 * 1024) return showMsg(biMsg, 'Die Datei ist zu groß (max. 20 MB).', 'error');
+    try {
+      const bytes = new Uint8Array(await datei.arrayBuffer());
+      let daten;
+      if (bytes[0] === 0x50 && bytes[1] === 0x4b) {
+        daten = biCamtLesen(await biZipEntpacken(bytes));
+      } else if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) {   // %PDF
+        daten = await biPdfLesen(bytes);
+      } else {
+        const text = biDekodieren(bytes);
+        daten = text.trimStart().startsWith('<') ? biCamtLesen([text]) : await biCsvLesen(text);
+      }
+      daten.dateiname = datei.name;
+      if (!daten.zeilen.length) throw new Error('In der Datei wurden keine gebuchten Umsätze gefunden.');
+
+      // Schlüssel je Buchung (Verein + Fingerabdruck) und Abgleich mit bereits importierten
+      const orgId = await eigeneOrgId();
+      for (const z of daten.zeilen) z.extId = `${orgId}:${await biHash(z.schluessel)}`;
+      const vorhanden = new Set();
+      const ids = daten.zeilen.map(z => z.extId);
+      for (let i = 0; i < ids.length; i += 150) {
+        const { data, error } = await supabaseClient.from('zahlungen').select('fints_transaktions_id').in('fints_transaktions_id', ids.slice(i, i + 150));
+        if (error) throw new Error('Die vorhandenen Buchungen konnten nicht geprüft werden.');
+        (data || []).forEach(d => vorhanden.add(d.fints_transaktions_id));
+      }
+      daten.alle = daten.zeilen;
+      daten.zeilen = daten.zeilen.filter(z => !vorhanden.has(z.extId)).sort((a, b) => a.datum.localeCompare(b.datum));
+      daten.doppelt = daten.alle.length - daten.zeilen.length;
+
+      const { data: konten } = await supabaseClient.from('bank_konto').select('*');
+      bankKonten = konten || [];
+      daten.konto = bankKonten.find(k => k.iban === daten.iban) || (bankKonten.length === 1 && !daten.iban ? bankKonten[0] : null);
+
+      await biZuordnen(daten);
+      biDaten = daten;
+      biVorschauZeigen();
+    } catch (err) {
+      console.error('Import', err);
+      showMsg(biMsg, err.message || 'Die Datei konnte nicht gelesen werden.', 'error');
+    }
+  });
+
+  function biVorschauZeigen() {
+    const d = biDaten;
+    const datums = d.alle.map(z => z.datum).sort();
+    const zeilen = [
+      `<strong>${escapeHtml(d.dateiname)}</strong> · ${({ camt: 'CAMT', csv: 'CSV', pdf: 'PDF-Kontoauszug' })[d.format]}`
+        + (d.iban ? ` · Konto ${escapeHtml(ibanFormatieren(d.iban))}` : ''),
+      `Zeitraum ${formatDatum(datums[0])} – ${formatDatum(datums[datums.length - 1])}: `
+        + `<strong>${d.zeilen.length} neue Buchung${d.zeilen.length === 1 ? '' : 'en'}</strong>`
+        + (d.doppelt ? `, ${d.doppelt} bereits importiert (werden übersprungen)` : '')
+        + (d.vorgemerkt ? `, ${d.vorgemerkt} vorgemerkte ignoriert` : ''),
+    ];
+    for (const a of d.auszuege) {
+      if (a.ok === true) zeilen.push(`✅ Auszug ${formatDatum(a.von)}–${formatDatum(a.bis)}: Anfangssaldo ${formatBetrag(a.anfang)} + Umsätze = Endsaldo ${formatBetrag(a.ende)} – Datei vollständig gelesen.`);
+      if (a.ok === false) zeilen.push(`⚠️ Auszug ${formatDatum(a.von)}–${formatDatum(a.bis)}: Die Umsätze ergeben nicht den Endsaldo der Bank. Bitte die Datei prüfen.`);
+    }
+    const offen = d.zeilen.filter(z => !z.katId).length;
+    if (offen) zeilen.push(`${offen} Buchung${offen === 1 ? '' : 'en'} ohne Kategorie – du kannst sie jetzt oder später im Kassenbuch zuordnen (Filter „nur zu prüfen“).`);
+    biInfo.innerHTML = zeilen.join('<br>');
+
+    // CSV ohne Saldo-Spalte: Kontostand abfragen (beim ersten Import Pflicht)
+    const brauchtSaldo = d.format === 'csv' && d.saldoBank === null;
+    biSaldoEingabe.classList.toggle('hidden', !brauchtSaldo);
+
+    const mitgliedOptionen = (sel) => '<option value="">–</option>' + allMembers.map(m =>
+      `<option value="${m.id}" ${m.id === sel ? 'selected' : ''}>${escapeHtml(m.vorname + ' ' + m.nachname)}</option>`).join('');
+    const katOptionen = (art, sel) => '<option value="">– zu prüfen –</option>' + alleKategorien
+      .filter(k => k.aktiv && k.art === art)
+      .map(k => `<option value="${k.id}" ${k.id === sel ? 'selected' : ''}>${escapeHtml(k.name)}</option>`).join('');
+
+    biTabelle.innerHTML = d.zeilen.map((z, i) => `
+      <tr>
+        <td><input type="checkbox" data-bi-an="${i}" checked style="width:auto; margin:0;"></td>
+        <td style="white-space:nowrap;">${formatDatum(z.datum)}</td>
+        <td><strong>${escapeHtml(z.name || z.buchungstext || '–')}</strong>
+          <div style="color:var(--ink-soft); font-size:12px;">${escapeHtml(z.zweck || z.buchungstext || '')}</div>
+          ${z.hinweis ? `<div style="color:var(--orange); font-size:12px; font-weight:600;">${escapeHtml(z.hinweis)}</div>` : ''}</td>
+        <td class="betrag-zelle"><span class="${z.art === 'ausgabe' ? 'betrag-ausgabe' : 'betrag-einnahme'}">${z.art === 'ausgabe' ? '−' : '+'} ${formatBetrag(z.betrag)}</span></td>
+        <td><select data-bi-kat="${i}" style="margin:0; padding:6px 8px; font-size:13px;">${katOptionen(z.art, z.katId)}</select></td>
+        <td><select data-bi-mit="${i}" style="margin:0; padding:6px 8px; font-size:13px;">${mitgliedOptionen(z.mitgliedId)}</select></td>
+      </tr>`).join('');
+    biTabelle.querySelectorAll('[data-bi-kat]').forEach(s => s.addEventListener('change', () => { d.zeilen[s.dataset.biKat].katId = s.value; }));
+    biTabelle.querySelectorAll('[data-bi-mit]').forEach(s => s.addEventListener('change', () => { d.zeilen[s.dataset.biMit].mitgliedId = s.value; }));
+    biTabelle.querySelectorAll('[data-bi-an]').forEach(c => c.addEventListener('change', biKnopfText));
+
+    biVorschau.classList.remove('hidden');
+    biUebernehmenBtn.classList.toggle('hidden', d.zeilen.length === 0);
+    if (!d.zeilen.length) showMsg(biMsg, 'Alle Buchungen dieser Datei sind bereits im Kassenbuch.', 'info');
+    biKnopfText();
+  }
+
+  function biKnopfText() {
+    const n = biTabelle.querySelectorAll('[data-bi-an]:checked').length;
+    biUebernehmenBtn.textContent = `${n} Buchung${n === 1 ? '' : 'en'} übernehmen`;
+    biUebernehmenBtn.disabled = n === 0;
+  }
+
+  // ---- Übernehmen ----
+  biUebernehmenBtn.addEventListener('click', async () => {
+    const d = biDaten;
+    clearMsg(biMsg);
+    const gewaehlt = [...biTabelle.querySelectorAll('[data-bi-an]:checked')].map(c => d.zeilen[c.dataset.biAn]);
+    if (!gewaehlt.length) return;
+
+    // Kontostand laut Bank (CAMT: aus der Datei, CSV: Saldo-Spalte oder Eingabe)
+    const letzterAuszug = d.auszuege.filter(a => a.ende !== null).sort((a, b) => (a.bis || '').localeCompare(b.bis || '')).pop();
+    let saldoBank = letzterAuszug ? letzterAuszug.ende : d.saldoBank;
+    let saldoDatum = letzterAuszug ? (letzterAuszug.endeDatum || letzterAuszug.bis) : d.saldoDatum;
+    if (saldoBank === null && biSaldo.value.trim()) {
+      saldoBank = biBetrag(biSaldo.value);
+      if (isNaN(saldoBank)) return showMsg(biMsg, 'Der eingegebene Kontostand ist ungültig.', 'error');
+      saldoDatum = d.alle.map(z => z.datum).sort().pop();
+    }
+    if (!d.konto && (saldoBank === null || saldoBank === undefined)) {
+      return showMsg(biMsg, 'Beim ersten Import wird der Kontostand laut Bank gebraucht, damit die Software den Kontostand richtig berechnen kann. Bitte oben eintragen.', 'error');
+    }
+
+    biUebernehmenBtn.disabled = true;
+    biUebernehmenBtn.textContent = 'Übernehme …';
+    try {
+      const vorzeichen = (z) => (z.art === 'einnahme' ? 1 : -1) * z.betrag;
+      const ersterTag = d.alle.map(z => z.datum).sort()[0];
+
+      // 1. Bankkonto anlegen bzw. Startsaldo festlegen
+      let konto = d.konto;
+      if (!konto) {
+        let startsaldo, startdatum = ersterTag;
+        const ersterAuszug = d.auszuege.filter(a => a.anfang !== null).sort((a, b) => (a.von || '').localeCompare(b.von || ''))[0];
+        if (ersterAuszug) {
+          startsaldo = ersterAuszug.anfang;
+          startdatum = [ersterAuszug.von, ersterTag].filter(Boolean).sort()[0];
+        } else {
+          startsaldo = biRund(saldoBank - d.alle.reduce((s, z) => s + vorzeichen(z), 0));
+        }
+        const { data, error } = await supabaseClient.from('bank_konto').insert({
+          iban: d.iban || 'unbekannt', bezeichnung: 'Vereinskonto', startsaldo, startdatum,
+        }).select().single();
+        if (error) throw error;
+        konto = data;
+      } else if (ersterTag < konto.startdatum) {
+        const frueherer = d.auszuege.filter(a => a.anfang !== null && a.von && a.von <= ersterTag).sort((a, b) => a.von.localeCompare(b.von))[0];
+        if (frueherer) {
+          await supabaseClient.from('bank_konto').update({ startsaldo: frueherer.anfang, startdatum: frueherer.von }).eq('id', konto.id);
+        } else {
+          showMsg(biMsg, 'Hinweis: Die Datei enthält Buchungen vor dem bisherigen Startdatum. Sie werden übernommen, zählen aber nicht zum berechneten Kontostand.', 'info');
+        }
+      }
+
+      // 2. Import protokollieren
+      const datums = d.alle.map(z => z.datum).sort();
+      const { data: imp, error: impErr } = await supabaseClient.from('bank_importe').insert({
+        bank_konto_id: konto.id, dateiname: d.dateiname.slice(0, 200), format: d.format,
+        zeitraum_von: datums[0], zeitraum_bis: datums[datums.length - 1],
+        anfangssaldo: d.auszuege.find(a => a.anfang !== null)?.anfang ?? null,
+        endsaldo: saldoBank ?? null, anzahl_neu: gewaehlt.length, anzahl_doppelt: d.doppelt,
+      }).select().single();
+      if (impErr) throw impErr;
+
+      // 3. Buchungen anlegen (in Paketen; bereits vorhandene werden übersprungen)
+      const zeile = (z) => ({
+        datum: z.datum, art: z.art, betrag: z.betrag,
+        kategorie_id: z.katId || null,
+        verwendungszweck: (z.zweck || z.buchungstext || '').slice(0, 500) || null,
+        gegenpartei: (z.name || '').slice(0, 200) || null,
+        mitglied_id: z.mitgliedId || null,
+        notiz: z.hinweis || (z.buchungstext ? 'Bank: ' + z.buchungstext.slice(0, 200) : null),
+        quelle: 'fints_import',
+        abgleich_status: z.katId ? 'zugeordnet' : 'offen',
+        fints_transaktions_id: z.extId,
+        bank_konto_id: konto.id, import_id: imp.id,
+      });
+      let neu = 0;
+      for (let i = 0; i < gewaehlt.length; i += 100) {
+        const paket = gewaehlt.slice(i, i + 100).map(zeile);
+        const { error } = await supabaseClient.from('zahlungen').insert(paket);
+        if (!error) { neu += paket.length; continue; }
+        if (error.code !== '23505') throw error;
+        for (const p of paket) {                                   // einzeln, Doppelte überspringen
+          const { error: e2 } = await supabaseClient.from('zahlungen').insert(p);
+          if (!e2) neu++; else if (e2.code !== '23505') throw e2;
+        }
+      }
+
+      // 4. Kontostand laut Bank merken
+      if (saldoBank !== null && saldoBank !== undefined && (!konto.bank_saldo_datum || saldoDatum >= konto.bank_saldo_datum)) {
+        await supabaseClient.from('bank_konto').update({ bank_saldo: saldoBank, bank_saldo_datum: saldoDatum }).eq('id', konto.id);
+      }
+
+      biModal.classList.add('hidden');
+      await loadKassenbuch();
+      showMsg(kbMsg, `${neu} Buchung${neu === 1 ? '' : 'en'} aus „${d.dateiname}“ übernommen. Den Kontostands-Abgleich siehst du oben.`, 'success');
+    } catch (err) {
+      console.error('Import übernehmen', err);
+      showMsg(biMsg, 'Die Buchungen konnten nicht übernommen werden. Ist „bankimport.sql“ ausgeführt?', 'error');
+    } finally {
+      biUebernehmenBtn.disabled = false;
+      biKnopfText();
+    }
+  });
 
   // ---- Buchung anlegen / bearbeiten ----
   function kategorieSelectBefuellen(art, selectedId) {
@@ -4584,6 +5252,21 @@
       ).join('');
   }
 
+  // Importierte Buchungen: Art, Datum und Betrag kommen von der Bank und bleiben fest,
+  // sonst stimmt der Kontostand nicht mehr. Kategorie, Mitglied usw. sind frei.
+  function buchungImportSperre(an) {
+    ['buchungArt', 'buchungDatum', 'buchungBetrag'].forEach(id => { document.getElementById(id).disabled = an; });
+    let hinweis = document.getElementById('buchungImportHinweis');
+    if (!hinweis) {
+      hinweis = document.createElement('p');
+      hinweis.id = 'buchungImportHinweis';
+      hinweis.style.cssText = 'font-size:12.5px; color:var(--ink-soft); background:var(--mint-bg); padding:8px 10px; border-radius:8px; margin:0 0 14px;';
+      hinweis.textContent = 'Diese Buchung stammt aus dem Kontoauszug. Art, Datum und Betrag sind deshalb fest – Kategorie, Mitglied, Zweck und Zuordnungen kannst du ändern.';
+      buchungForm.insertBefore(hinweis, buchungForm.firstChild.nextSibling);
+    }
+    hinweis.classList.toggle('hidden', !an);
+  }
+
   function openBuchungModal(id) {
     clearMsg(buchungModalMsg);
     buchungForm.reset();
@@ -4599,6 +5282,7 @@
       document.getElementById('buchungNotiz').value = b.notiz || '';
       kategorieSelectBefuellen(b.art, b.kategorie_id);
       mitgliedSelectBefuellen(b.mitglied_id);
+      buchungImportSperre(b.quelle === 'fints_import');
       vaSelectBefuellen('buchungVeranstaltung', b.veranstaltung_id);
       projektSelectBefuellen('buchungProjekt', b.projekt_id);
       document.getElementById('buchungModalTitel').textContent = 'Buchung bearbeiten';
@@ -4609,6 +5293,7 @@
       document.getElementById('buchungArt').value = 'einnahme';
       kategorieSelectBefuellen('einnahme', null);
       mitgliedSelectBefuellen(null);
+      buchungImportSperre(false);
       vaSelectBefuellen('buchungVeranstaltung', null);
       projektSelectBefuellen('buchungProjekt', null);
       document.getElementById('buchungModalTitel').textContent = 'Neue Buchung';
@@ -4654,8 +5339,10 @@
       notiz: document.getElementById('buchungNotiz').value.trim() || null,
       veranstaltung_id: document.getElementById('buchungVeranstaltung').value || null,
       projekt_id: document.getElementById('buchungProjekt').value || null,
-      quelle: 'manuell',
     };
+    const bisher = id ? alleBuchungen.find(x => x.id === id) : null;
+    if (!bisher) payload.quelle = 'manuell';
+    if (bisher && bisher.quelle === 'fints_import') payload.abgleich_status = 'zugeordnet';
 
     const saveBtn = document.getElementById('saveBuchungBtn');
     saveBtn.disabled = true;
@@ -4682,7 +5369,10 @@
   deleteBuchungBtn.addEventListener('click', async () => {
     const id = document.getElementById('buchungId').value;
     if (!id) return;
-    if (!confirm('Diese Buchung wirklich löschen?')) return;
+    const bLoeschen = alleBuchungen.find(x => x.id === id);
+    if (!confirm(bLoeschen && bLoeschen.quelle === 'fints_import'
+      ? 'Diese Buchung stammt aus dem Kontoauszug. Wenn du sie löschst, stimmt der berechnete Kontostand nicht mehr mit der Bank überein.\n\nTrotzdem löschen?'
+      : 'Diese Buchung wirklich löschen?')) return;
 
     const { error } = await supabaseClient.from('zahlungen').delete().eq('id', id);
     if (error) {
