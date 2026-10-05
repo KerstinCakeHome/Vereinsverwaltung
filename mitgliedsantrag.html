@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <!-- Sicherheit: erlaubte Quellen (Content Security Policy) und Referrer-Regel -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://kojybldatglnzvyhtrrd.supabase.co https://api.emailjs.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://kojybldatglnzvyhtrrd.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="robots" content="noindex" />
 <title>Mitgliedsantrag – Förderverein Himmelsleiter</title>
@@ -425,16 +425,12 @@
   </section>
 </main>
 
-<!-- Bibliotheken liegen selbst gehostet im Ordner lib/ (feste Versionen, wie in index.html) -->
+<!-- Bibliothek liegt selbst gehostet im Ordner lib/ (feste Version, wie in index.html) -->
 <script src="lib/supabase-2.117.2.js"></script>
-<script src="lib/emailjs-4.4.1.min.js"></script>
 <script>
   // ---- Zugangsdaten (dieselben wie in index.html) ----
   const SUPABASE_URL = "https://kojybldatglnzvyhtrrd.supabase.co";
   const SUPABASE_ANON_KEY = "sb_publishable_oC3xRFBNuBTGemRFvBCb8Q_L1WikuAj";
-  const EMAILJS_PUBLIC_KEY = "PUGAnaqohRQm4z5PK";
-  const EMAILJS_SERVICE_ID = "service_fzbtphu";
-  const EMAILJS_TEMPLATE_ID = "template_ksjikhx";
 
   // Verein kommt aus dem QR-Code-Link: mitgliedsantrag.html?v=<organization_id>
   const ORG_ID = new URLSearchParams(location.search).get('v');
@@ -442,7 +438,6 @@
   const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { persistSession: false, autoRefreshToken: false }
   });
-  if (window.emailjs) emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
 
   const $ = id => document.getElementById(id);
   const geladenUm = Date.now();
@@ -730,53 +725,14 @@
   });
 
   // ---------------- E-Mails (Fehler blockieren den Antrag nicht) ----------------
+  // Versand läuft serverseitig über die Edge Function "antrag-mail": Empfänger und Text
+  // werden dort aus dem gespeicherten Antrag gebildet, der Browser kann nichts vorgeben.
   async function mailsVersenden(d) {
-    if (!window.emailjs) return;
-    const verein = info?.verein || 'Förderverein';
-    const art = d.mitgliedsart === 'foerder' ? 'Fördermitglied' : 'Ordentliches Mitglied';
-    const zahlung = d.zahlungsweise === 'lastschrift' ? 'SEPA-Lastschrift' : 'Überweisung';
-    const jobs = [];
-
-    jobs.push(emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-      to_email: d.email,
-      to_name: `${d.vorname} ${d.nachname}`,
-      subject: 'Dein Mitgliedsantrag ist eingegangen',
-      message:
-`Hallo ${d.vorname},
-
-vielen Dank für deinen Mitgliedsantrag beim ${verein}! Er ist gut bei uns angekommen.
-
-Deine Angaben:
-• Name: ${d.vorname} ${d.nachname}
-• Anschrift: ${d.strasse}, ${d.plz} ${d.ort}
-• Mitgliedschaft: ${art}
-• Zahlungsweise: ${zahlung}${d.kinder.length ? `\n• Kind(er): ${d.kinder.map(k => k.vorname + (k.gruppe ? ' (' + k.gruppe + ')' : '')).join(', ')}` : ''}
-
-Der Vorstand prüft deinen Antrag und du bekommst eine weitere Nachricht, sobald deine Mitgliedschaft bestätigt ist.
-
-Falls etwas nicht stimmt, antworte einfach auf diese E-Mail.
-
-Herzliche Grüße
-Dein Vorstand`,
-    }));
-
-    if (info?.kontakt_email) {
-      const appLink = new URL('index.html', location.href).href;
-      jobs.push(emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-        to_email: info.kontakt_email,
-        to_name: 'Vorstand',
-        subject: `Neuer Mitgliedsantrag: ${d.vorname} ${d.nachname}`,
-        message:
-`Im Posteingang der Vereinsverwaltung liegt ein neuer Mitgliedsantrag:
-
-• ${d.vorname} ${d.nachname}, ${d.plz} ${d.ort}
-• ${art}, ${zahlung}
-
-Bitte prüfen und annehmen oder ablehnen:
-${appLink}`,
-      }));
+    try {
+      await supabaseClient.functions.invoke('antrag-mail', { body: { org: ORG_ID, email: d.email } });
+    } catch (err) {
+      console.error('Bestätigungsmail', err);
     }
-    await Promise.allSettled(jobs);
   }
 
   init();
