@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<!-- Sicherheit: erlaubte Quellen (Content Security Policy) und Referrer-Regel -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://kojybldatglnzvyhtrrd.supabase.co; connect-src 'self' https://kojybldatglnzvyhtrrd.supabase.co wss://kojybldatglnzvyhtrrd.supabase.co https://api.emailjs.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <title>Förderverein Himmelsleiter – Vereinsverwaltung</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2506,8 +2509,10 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<!-- Bibliotheken liegen selbst gehostet im Ordner lib/ (feste Versionen):
+     supabase-js 2.117.2, @emailjs/browser 4.4.1, qrcode-generator 1.4.4 -->
+<script src="lib/supabase-2.117.2.js"></script>
+<script src="lib/emailjs-4.4.1.min.js"></script>
 <script>
   const SUPABASE_URL = "https://kojybldatglnzvyhtrrd.supabase.co";
   const SUPABASE_ANON_KEY = "sb_publishable_oC3xRFBNuBTGemRFvBCb8Q_L1WikuAj";
@@ -3148,6 +3153,11 @@
     membersBody.querySelectorAll('tr.member-row').forEach(row => {
       row.addEventListener('click', () => openDetailModal(row.dataset.id));
     });
+  }
+
+  // Unterschrift nur übernehmen, wenn sie ein echtes Base64-PNG ist (Schutz vor eingeschleustem Code)
+  function sichereUnterschrift(bild) {
+    return typeof bild === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(bild) ? bild : '';
   }
 
   function escapeHtml(str) {
@@ -6827,8 +6837,8 @@
     const anschrift = [mitglied.strasse, [mitglied.plz, mitglied.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
     const ort = mandat.unterschrift_ort || mitglied.ort || '';
     const datum = mandat.unterschrift_datum ? formatDatum(mandat.unterschrift_datum) : '';
-    const unterschrift = mandat.unterschrift_bild
-      ? `<img src="${mandat.unterschrift_bild}" alt="Unterschrift">`
+    const unterschrift = sichereUnterschrift(mandat.unterschrift_bild)
+      ? `<img src="${sichereUnterschrift(mandat.unterschrift_bild)}" alt="Unterschrift">`
       : '';
     const vereinName = verein.name || 'Förderverein Kita Himmelsleiter';
 
@@ -7561,8 +7571,8 @@
       ${peFeld('Foto-Einwilligung', peJaNein(a.foto_einwilligung, 'erteilt', 'nicht erteilt'))}
     `;
 
-    document.getElementById('antragUnterschrift').innerHTML = a.unterschrift_bild
-      ? `<img class="pe-sig" src="${a.unterschrift_bild}" alt="Unterschrift">
+    document.getElementById('antragUnterschrift').innerHTML = sichereUnterschrift(a.unterschrift_bild)
+      ? `<img class="pe-sig" src="${sichereUnterschrift(a.unterschrift_bild)}" alt="Unterschrift">
          <div style="font-size:12.5px; color:var(--ink-soft); margin-top:6px;">${a.unterschrift_ort ? escapeHtml(a.unterschrift_ort) + ', ' : ''}${new Date(a.eingegangen_am).toLocaleDateString('de-DE')} · digital unterschrieben</div>`
       : (a.zahlungsweise === 'lastschrift'
           ? '<span class="pe-nein">– (gelöscht)</span>'
@@ -7900,7 +7910,7 @@ Dein Vorstand`;
     const bild = document.getElementById('qrBild');
     bild.innerHTML = 'Lädt …';
     try {
-      await peLadeSkript('https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js');
+      await peLadeSkript('lib/qrcode-1.4.4.js');
       const qr = qrcode(0, 'M');
       qr.addData(qrUrl);
       qr.make();
@@ -8108,7 +8118,7 @@ Dein Vorstand`;
       return;
     }
     try {
-      await peLadeSkript('https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js');
+      await peLadeSkript('lib/qrcode-1.4.4.js');
       qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];   // Umlaute im Namen korrekt übertragen
       const qr = qrcode(0, 'M');
       qr.addData(daten, 'Byte');

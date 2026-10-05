@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<!-- Sicherheit: erlaubte Quellen (Content Security Policy) und Referrer-Regel -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://kojybldatglnzvyhtrrd.supabase.co https://api.emailjs.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="robots" content="noindex" />
 <title>Mitgliedsantrag – Förderverein Himmelsleiter</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -417,8 +420,9 @@
   </section>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<!-- Bibliotheken liegen selbst gehostet im Ordner lib/ (feste Versionen, wie in index.html) -->
+<script src="lib/supabase-2.117.2.js"></script>
+<script src="lib/emailjs-4.4.1.min.js"></script>
 <script>
   // ---- Zugangsdaten (dieselben wie in index.html) ----
   const SUPABASE_URL = "https://kojybldatglnzvyhtrrd.supabase.co";
@@ -705,7 +709,11 @@
     if (error) {
       btn.disabled = false;
       btn.textContent = 'Antrag verbindlich absenden';
-      return fehler(error.message || 'Das Absenden hat nicht geklappt. Bitte versuche es noch einmal.');
+      // Nur unsere eigenen, verständlichen Prüfmeldungen aus der Datenbank anzeigen (Code P0001).
+      // Technische Fehler werden nicht ungefiltert an Besucher ausgegeben.
+      console.error('Antrag fehlgeschlagen', error);
+      const eigeneMeldung = error.code === 'P0001' && error.message;
+      return fehler(eigeneMeldung || 'Das Absenden hat nicht geklappt. Bitte prüfe deine Angaben und versuche es noch einmal.');
     }
 
     await mailsVersenden(daten);
